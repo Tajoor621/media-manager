@@ -2,7 +2,22 @@
 
 Luxury media manager PWA — browse, preview, share, and install as a home-screen app.
 
-**Live (GitHub Pages):** https://tajoor621.github.io/media-manager/
+**Live URL (after Pages is on):** https://tajoor621.github.io/media-manager/
+
+**PWABuilder:** https://www.pwabuilder.com/?url=https://tajoor621.github.io/media-manager/
+
+## Enable GitHub Pages (one click)
+
+The site is already built on the `gh-pages` branch. GitHub will not serve it until you turn Pages on:
+
+1. Open https://github.com/Tajoor621/media-manager/settings/pages
+2. **Build and deployment → Source:** Deploy from a branch
+3. **Branch:** `gh-pages` / `/ (root)` → Save
+4. Wait ~1 minute, then open https://tajoor621.github.io/media-manager/
+
+After that you can paste the live URL into PWABuilder for an Android APK.
+
+A GitHub Actions workflow (`.github/workflows/pages.yml`) also rebuilds on every push to `main`. Optional: switch Source to **GitHub Actions** once you have approved the `github-pages` environment.
 
 ## Stack
 
@@ -23,18 +38,11 @@ Luxury media manager PWA — browse, preview, share, and install as a home-scree
 
 **Output directory (Pages):** `dist/`
 
-## GitHub Pages
+## What runs where
 
-This repo deploys the static PWA automatically on push to `main` via GitHub Actions.
+Works on GitHub Pages: library, photos/videos/audio/PDF/ZIP/SQLite viewers, upload, drag-and-drop, offline cache, home-screen install.
 
-1. Settings → Pages → Source: **GitHub Actions** (first deploy may ask you to approve the `github-pages` environment).
-2. After the workflow is green, open https://tajoor621.github.io/media-manager/
-3. Android: Chrome → Install app. iPhone: Safari → Share → Add to Home Screen.
-4. APK: paste the Pages URL into [PWABuilder](https://www.pwabuilder.com).
-
-Works on Pages: library, photos/videos/audio/PDF/ZIP/SQLite viewers, upload, drag-and-drop, offline cache, home-screen install.
-
-Needs a Node host (Vercel/Netlify, not Pages): Google Drive RPC, Nearby WebRTC signaling.
+Needs a Node host (Vercel, not Pages): Google Drive RPC, Nearby WebRTC signaling.
 
 ## Vercel (full app)
 
