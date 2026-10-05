@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Cloud, FolderOpen, HardDrive, Radio, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Camera, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Radio, Search } from "lucide-react";
 import { useFiles } from "@/lib/files/store";
 import { useShallow } from "zustand/react/shallow";
 import { formatBytes } from "@/lib/files/format";
@@ -24,8 +24,6 @@ import { cn } from "@/lib/utils";
 export function SettingsPanel() {
   const open = useFiles((s) => s.settingsOpen);
   const settings = useFiles((s) => s.settings);
-  const storage = useFiles((s) => s.storageBytes);
-  const quota = useFiles((s) => s.quotaBytes);
   const transfers = useFiles((s) => s.transfers);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
 
@@ -68,18 +66,14 @@ export function SettingsPanel() {
           </label>
         </section>
         <section>
-          <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Storage</h3>
-          <p className="text-sm tabular-nums text-muted">
-            {formatBytes(storage)} used
-            {quota ? ` of ${formatBytes(quota)}` : ""}
-          </p>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-elevated">
-            <div
-              className="h-full bg-gold"
-              style={{ width: `${quota ? Math.min(100, (storage / quota) * 100) : 8}%` }}
-            />
-          </div>
+          <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">RAM & ROM</h3>
+          <StorageMeters />
           <LargestFiles />
+          <div className="mt-3">
+            <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().persistStorage()}>
+              Keep library on this device
+            </Button>
+          </div>
         </section>
         <section>
           <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Transfers</h3>
@@ -259,71 +253,287 @@ export function CommandPalette() {
   );
 }
 
+export function StorageMeters({ compact }: { compact?: boolean }) {
+  const hardware = useFiles((s) => s.hardware);
+  const deviceBytes = useFiles((s) => s.deviceBytes);
+  const deviceCount = useFiles((s) => s.deviceFileCount);
+  const scanning = useFiles((s) => s.deviceScanning);
+
+  useEffect(() => {
+    if (!hardware) void useFiles.getState().refreshHardware();
+  }, [hardware]);
+
+  const ramTotal = hardware?.ramBytes ?? hardware?.heapLimit ?? 0;
+  const ramUsed = hardware?.heapUsed ?? 0;
+  const romTotal = hardware?.romQuota ?? 0;
+  const romUsed = hardware?.romUsed ?? 0;
+  const ramPct = ramTotal ? Math.min(100, (ramUsed / ramTotal) * 100) : 0;
+  const romPct = romTotal ? Math.min(100, (romUsed / romTotal) * 100) : 0;
+
+  return (
+    <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2")}>
+      <MeterCard
+        icon={<MemoryStick className="size-4 text-gold" />}
+        label="RAM"
+        value={
+          hardware?.ramGb
+            ? `~${hardware.ramGb} GB device`
+            : ramTotal
+              ? formatBytes(ramTotal)
+              : "Not reported"
+        }
+        detail={ramUsed ? `${formatBytes(ramUsed)} in use by this app` : hardware?.platform ?? ""}
+        pct={ramPct}
+      />
+      <MeterCard
+        icon={<Cpu className="size-4 text-gold" />}
+        label="ROM"
+        value={romTotal ? `${formatBytes(romUsed)} / ${formatBytes(romTotal)}` : "Measuring…"}
+        detail={
+          deviceCount
+            ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} files · ${formatBytes(deviceBytes)} on disk`
+            : hardware?.persisted
+              ? "Persistent app storage"
+              : "Grant a device folder to read phone storage"
+        }
+        pct={romPct}
+      />
+    </div>
+  );
+}
+
+function MeterCard({
+  icon,
+  label,
+  value,
+  detail,
+  pct,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  detail: string;
+  pct: number;
+}) {
+  return (
+    <div className="rounded-lg bg-elevated px-3 py-3 hairline">
+      <div className="mb-1 flex items-center gap-2 text-xs uppercase tracking-wider text-subtle">
+        {icon}
+        {label}
+      </div>
+      <p className="text-sm tabular-nums text-foreground">{value}</p>
+      <p className="mt-0.5 truncate text-xs text-muted">{detail}</p>
+      <div className="mt-2 h-1 overflow-hidden rounded-full bg-background">
+        <div className="h-full bg-gold" style={{ width: `${pct || 6}%` }} />
+      </div>
+    </div>
+  );
+}
+
 export function DevicePane() {
   const status = useFiles((s) => s.deviceStatus);
   const stack = useFiles((s) => s.deviceStack);
   const entries = useFiles((s) => s.deviceEntries);
+  const mode = useFiles((s) => s.deviceMode);
+  const path = useFiles((s) => s.devicePath);
+  const rootName = useFiles((s) => s.deviceRootName);
+  const fileCount = useFiles((s) => s.deviceFileCount);
+  const folders = useFiles((s) => s.deviceFolders);
+  const bytes = useFiles((s) => s.deviceBytes);
+  const scanning = useFiles((s) => s.deviceScanning);
+  const showHidden = useFiles((s) => s.settings.showHidden);
+  const [q, setQ] = useState("");
+  const dirRef = useRef<HTMLInputElement>(null);
+  const filesRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
 
-  if (status === "unsupported") {
-    return (
-      <Hint
-        icon={<HardDrive className="size-8 text-gold" />}
-        title="Device folder"
-        body="Opening a real disk folder needs Chromium with the File System Access API. Upload into Internal Storage on this browser, or open the app in Chrome / Edge on desktop."
-      />
-    );
-  }
-  if (status !== "ready") {
-    return (
-      <Hint
-        icon={<FolderOpen className="size-8 text-gold" />}
-        title="Connect a folder"
-        body="Grant access to a directory on this device. Media Manager never uploads it — files stay on disk unless you import them."
-        action="Open folder"
-        onAction={() => void useFiles.getState().connectDevice()}
-      />
-    );
-  }
+  useEffect(() => {
+    const el = dirRef.current;
+    if (!el) return;
+    el.setAttribute("webkitdirectory", "");
+    el.setAttribute("directory", "");
+    el.multiple = true;
+  }, []);
+
+  const takeFiles = (list: FileList | null) => {
+    const files = list ? [...list] : [];
+    if (!files.length) return;
+    void useFiles.getState().mountDeviceFiles(files);
+  };
+
+  const visible = entries.filter((e) => showHidden || !e.name.startsWith("."));
+  const filtered = q.trim()
+    ? visible.filter((e) => e.name.toLowerCase().includes(q.trim().toLowerCase()))
+    : visible;
+  const crumb = mode === "tree" ? [rootName, ...path.split("/").filter(Boolean)] : stack.map((s) => s.name);
+  const ready = status === "ready";
+
   return (
-    <div className="min-h-0 flex-1 overflow-auto px-3 py-2 sm:px-5">
-      <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
-        <Button size="sm" variant="ghost" onClick={() => void useFiles.getState().deviceUp()} disabled={stack.length <= 1}>
-          Up
+    <div
+      className="flex min-h-0 flex-1 flex-col overflow-auto px-3 py-3 sm:px-5"
+      onDragOver={(e) => {
+        e.preventDefault();
+      }}
+      onDrop={(e) => {
+        e.preventDefault();
+        const files = [...e.dataTransfer.files];
+        if (files.length) void useFiles.getState().mountDeviceFiles(files);
+      }}
+    >
+      <input
+        ref={dirRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={(e) => {
+          takeFiles(e.target.files);
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={filesRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={(e) => {
+          const files = e.target.files ? [...e.target.files] : [];
+          e.target.value = "";
+          if (files.length) void useFiles.getState().ingestFiles(files);
+        }}
+      />
+      <input
+        ref={cameraRef}
+        type="file"
+        className="hidden"
+        accept="image/*,video/*,audio/*"
+        capture="environment"
+        onChange={(e) => {
+          const files = e.target.files ? [...e.target.files] : [];
+          e.target.value = "";
+          if (files.length) void useFiles.getState().ingestFiles(files);
+        }}
+      />
+
+      <StorageMeters />
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button size="sm" onClick={() => void useFiles.getState().connectDevice()}>
+          Open disk folder
         </Button>
-        <span className="text-muted">{stack.map((s) => s.name).join(" / ")}</span>
+        <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
+          Entire folder
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => filesRef.current?.click()}>
+          <Images className="size-3.5" />
+          Photos & files
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => cameraRef.current?.click()}>
+          <Camera className="size-3.5" />
+          Camera
+        </Button>
       </div>
-      <ul className="overflow-hidden rounded-lg hairline">
-        {entries.map((e) => (
-          <li key={e.name} className="flex items-center gap-1 border-b border-border last:border-b-0">
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-3 text-left hover:bg-elevated"
-              onClick={() => {
-                if (e.kind === "folder") void useFiles.getState().enterDeviceFolder(e.name);
-                else void useFiles.getState().openDeviceFile(e.name);
-              }}
-            >
-              <span className="flex min-w-0 items-center gap-3">
-                <FileGlyph kind={viewerKind(e.mime, e.name)} folder={e.kind === "folder"} />
-                <span className="truncate">{e.name}</span>
-              </span>
-              <span className="text-xs text-subtle tabular-nums">
-                {e.kind === "folder" ? "Folder" : formatBytes(e.size)}
-              </span>
-            </button>
-            {e.kind === "file" && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="mr-1 shrink-0"
-                onClick={() => void useFiles.getState().importDeviceFile(e.name)}
-              >
-                Import
-              </Button>
-            )}
-          </li>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {(
+          [
+            ["downloads", "Downloads"],
+            ["pictures", "Pictures"],
+            ["videos", "Videos"],
+            ["music", "Music"],
+            ["documents", "Documents"],
+          ] as const
+        ).map(([id, label]) => (
+          <Button
+            key={id}
+            size="sm"
+            variant="ghost"
+            onClick={() => void useFiles.getState().connectDevice(id)}
+          >
+            {label}
+          </Button>
         ))}
-      </ul>
+      </div>
+      <p className="mt-3 max-w-xl text-xs text-muted">
+        Browsers will not silently open the whole phone. Choose Internal storage, Download, DCIM, or SD
+        card in the system picker — then every file in that tree can be previewed, searched, and imported.
+      </p>
+
+      {ready ? (
+        <>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-sm text-foreground">
+                {rootName}
+                {scanning ? " · scanning…" : ""}
+              </p>
+              <p className="text-xs text-subtle tabular-nums">
+                {fileCount.toLocaleString()} files
+                {folders ? ` · ${folders.toLocaleString()} folders` : ""} · {formatBytes(bytes)}
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button size="sm" variant="ghost" onClick={() => void useFiles.getState().deviceUp()} disabled={crumb.length <= 1}>
+                Up
+              </Button>
+              <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().importDeviceFolder()}>
+                Import this tree
+              </Button>
+            </div>
+          </div>
+          <p className="mt-2 truncate text-xs text-muted">{crumb.join(" / ")}</p>
+          <div className="mt-3">
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter this folder" />
+          </div>
+          <ul className="mt-3 overflow-hidden rounded-lg hairline">
+            {filtered.length === 0 ? (
+              <li className="px-3 py-8 text-center text-sm text-muted">No files in this folder.</li>
+            ) : (
+              filtered.map((e) => (
+                <li key={e.path || e.name} className="flex items-center gap-1 border-b border-border last:border-b-0">
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-3 text-left hover:bg-elevated"
+                    onClick={() => {
+                      if (e.kind === "folder") void useFiles.getState().enterDeviceFolder(e.name);
+                      else void useFiles.getState().openDeviceFile(e.name);
+                    }}
+                  >
+                    <span className="flex min-w-0 items-center gap-3">
+                      <FileGlyph kind={viewerKind(e.mime, e.name)} folder={e.kind === "folder"} />
+                      <span className="truncate">{e.name}</span>
+                    </span>
+                    <span className="text-xs text-subtle tabular-nums">
+                      {e.kind === "folder" ? "Folder" : formatBytes(e.size)}
+                    </span>
+                  </button>
+                  {e.kind === "file" && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="mr-1 shrink-0"
+                      onClick={() => void useFiles.getState().importDeviceFile(e.name)}
+                    >
+                      Import
+                    </Button>
+                  )}
+                </li>
+              ))
+            )}
+          </ul>
+        </>
+      ) : (
+        <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">
+          <HardDrive className="size-8 text-gold" />
+          <h2 className="text-lg font-medium">Connect device storage</h2>
+          <p className="max-w-md text-sm text-muted">
+            Chrome / Edge: Open disk folder for a live mount. iPhone and Firefox: Entire folder copies the
+            tree into the app so you can browse every file you granted.
+          </p>
+          <Button onClick={() => dirRef.current?.click()}>
+            <FolderOpen className="size-4" />
+            Choose a folder
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

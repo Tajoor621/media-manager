@@ -61,7 +61,12 @@ export function FilePane() {
         e.preventDefault();
         setDropOver(false);
         const files = [...e.dataTransfer.files];
-        if (files.length) void ingest(files);
+        if (!files.length) return;
+        if (files.some((f) => (f.webkitRelativePath || "").includes("/"))) {
+          void useFiles.getState().mountDeviceFiles(files);
+        } else {
+          void ingest(files);
+        }
       }}
       onClick={() => useFiles.getState().clearSelection()}
       onTouchStart={(e) => {

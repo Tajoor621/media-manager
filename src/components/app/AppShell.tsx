@@ -41,7 +41,7 @@ import { formatBytes } from "@/lib/files/format";
 import { Button, IconButton, Input, Modal } from "@/components/ui";
 import { FilePane, ConfirmBar } from "./FilePane";
 import { MiniPlayer, ViewerHost } from "./Viewers";
-import { CloudPane, CommandPalette, DevicePane, NearbyPanel, SettingsPanel } from "./Panels";
+import { CloudPane, CommandPalette, DevicePane, NearbyPanel, SettingsPanel, StorageMeters } from "./Panels";
 import { BrandMark, BrandWordmark } from "./Brand";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +54,7 @@ const PLACES: { id: PlaceId; label: string; icon: typeof Home }[] = [
   { id: "downloads", label: "Downloads", icon: Upload },
   { id: "archives", label: "Archives", icon: Archive },
   { id: "projects", label: "Projects", icon: Database },
-  { id: "device", label: "Device folder", icon: HardDrive },
+  { id: "device", label: "Device storage", icon: HardDrive },
   { id: "drive", label: "Google Drive", icon: Cloud },
   { id: "nearby", label: "Nearby", icon: Radio },
   { id: "favorites", label: "Favorites", icon: Star },
@@ -343,8 +343,6 @@ function Sidebar() {
   const bookmarks = useFiles(
     useShallow((s) => Object.values(s.nodes).filter((n) => n.bookmark && n.kind === "folder")),
   );
-  const storage = useFiles((s) => s.storageBytes);
-  const quota = useFiles((s) => s.quotaBytes);
   const counts = useFiles(
     useShallow((s) => {
       const files = Object.values(s.nodes).filter((n) => n.parentId !== TRASH_ID && n.id !== TRASH_ID);
@@ -395,10 +393,7 @@ function Sidebar() {
             count={counts[p.id]}
             onClick={() => {
               if (p.id === "nearby") useFiles.getState().setNearbyOpen(true);
-              else if (p.id === "device" && useFiles.getState().deviceStatus !== "ready") {
-                void useFiles.getState().connectDevice();
-                useFiles.getState().goPlace("device");
-              } else useFiles.getState().goPlace(p.id);
+              else useFiles.getState().goPlace(p.id);
             }}
           />
         ))}
@@ -417,14 +412,8 @@ function Sidebar() {
           </>
         )}
       </nav>
-      <div className="border-t border-border px-4 py-3">
-        <p className="text-xs text-subtle tabular-nums">{formatBytes(storage)} on this device</p>
-        <div className="mt-2 h-1 overflow-hidden rounded-full bg-elevated">
-          <div
-            className="h-full bg-gold"
-            style={{ width: `${quota ? Math.min(100, (storage / quota) * 100) : 8}%` }}
-          />
-        </div>
+      <div className="border-t border-border px-3 py-3">
+        <StorageMeters compact />
       </div>
     </div>
   );
@@ -522,8 +511,17 @@ function Toolbar() {
   const crumbs = useFiles(useShallow((s) => s.breadcrumb()));
   const place = useFiles((s) => s.currentPlace());
   const fileRef = useRef<HTMLInputElement>(null);
+  const folderRef = useRef<HTMLInputElement>(null);
   const selectMode = useFiles((s) => s.selectMode);
   const canMutate = place !== "device" && place !== "drive" && place !== "nearby";
+
+  useEffect(() => {
+    const el = folderRef.current;
+    if (!el) return;
+    el.setAttribute("webkitdirectory", "");
+    el.setAttribute("directory", "");
+    el.multiple = true;
+  }, []);
 
   return (
     <div className="flex items-center gap-1 overflow-x-auto border-b border-border px-2 py-1.5 sm:flex-wrap sm:px-3">
@@ -576,6 +574,20 @@ function Toolbar() {
       <Button size="sm" variant="secondary" onClick={() => fileRef.current?.click()}>
         Upload
       </Button>
+      <Button size="sm" variant="secondary" onClick={() => folderRef.current?.click()}>
+        Folder
+      </Button>
+      <input
+        ref={folderRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={(e) => {
+          const files = [...(e.target.files ?? [])];
+          e.target.value = "";
+          if (files.length) void useFiles.getState().mountDeviceFiles(files);
+        }}
+      />
       <input
         ref={fileRef}
         type="file"

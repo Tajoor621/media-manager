@@ -67,6 +67,7 @@ export type Transfer = {
 
 export type DeviceEntry = {
   name: string;
+  path: string;
   kind: "file" | "folder";
   size: number;
   mime: string;

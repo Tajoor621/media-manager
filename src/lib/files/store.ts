@@ -22,16 +22,26 @@ import * as idb from "./idb";
 import { seedLibrary, ensureLatestSamples, folderTree } from "./seed";
 import { mimeFromName, viewerKind } from "./mime";
 import {
+  collectDirectoryFiles,
   ensurePermission,
+  filesUnderPath,
+  getDeviceBagFile,
   hasFileSystemAccess,
   listDirectory,
+  listTreePath,
+  mountFileList,
   openDeviceSubdir,
   pickDirectory,
   readDeviceFile,
+  scanDirectory,
+  treeParent,
   writeDeviceFile,
+  type WellKnownDir,
 } from "./fs-access";
+import { readHardware, requestPersistentStorage, type HardwareInfo } from "./hardware";
 
 const SETTINGS_KEY = "mm-621-settings";
+let scanGen = 0;
 
 let nameResolver: ((value: string | null) => void) | null = null;
 
@@ -133,6 +143,19 @@ type PlayerState = {
 
 type DeviceNav = { name: string; handle: FileSystemDirectoryHandle };
 
+async function resolveDeviceFile(
+  get: () => { deviceMode: "none" | "fsa" | "tree"; devicePath: string; deviceStack: DeviceNav[] },
+  name: string,
+): Promise<File | null> {
+  if (get().deviceMode === "tree") {
+    const path = get().devicePath ? `${get().devicePath}/${name}` : name;
+    return getDeviceBagFile(path) ?? getDeviceBagFile(name) ?? null;
+  }
+  const cur = get().deviceStack[get().deviceStack.length - 1];
+  if (!cur) return null;
+  return readDeviceFile(cur.handle, name);
+}
+
 type Store = {
   ready: boolean;
   error: string | null;
@@ -157,7 +180,15 @@ type Store = {
   deviceHandle: FileSystemDirectoryHandle | null;
   deviceStack: DeviceNav[];
   deviceEntries: DeviceEntry[];
-  deviceStatus: "idle" | "unsupported" | "need-gesture" | "ready" | "error";
+  deviceStatus: "idle" | "need-gesture" | "ready" | "error";
+  deviceMode: "none" | "fsa" | "tree";
+  devicePath: string;
+  deviceRootName: string;
+  deviceFileCount: number;
+  deviceBytes: number;
+  deviceFolders: number;
+  deviceScanning: boolean;
+  hardware: HardwareInfo | null;
   driveFolderId: string;
   drivePath: { id: string; name: string }[];
   driveItems: DriveItem[];
@@ -212,12 +243,16 @@ type Store = {
   moveTo: (ids: string[], parentId: string) => Promise<void>;
   addTransfer: (t: Omit<Transfer, "id"> & { id?: string }) => string;
   patchTransfer: (id: string, p: Partial<Transfer>) => void;
-  connectDevice: () => Promise<void>;
+  connectDevice: (startIn?: WellKnownDir) => Promise<void>;
+  mountDeviceFiles: (files: File[]) => Promise<void>;
   enterDeviceFolder: (name: string) => Promise<void>;
   deviceUp: () => Promise<void>;
   refreshDevice: () => Promise<void>;
   importDeviceFile: (name: string) => Promise<void>;
   openDeviceFile: (name: string) => Promise<void>;
+  importDeviceFolder: () => Promise<void>;
+  refreshHardware: () => Promise<void>;
+  persistStorage: () => Promise<void>;
   setDriveItems: (items: DriveItem[], status: Store["driveStatus"], error?: string | null) => void;
   setDriveFolder: (id: string, name: string) => void;
   driveUp: () => void;
@@ -329,7 +364,15 @@ export const useFiles = create<Store>((set, get) => ({
   deviceHandle: null,
   deviceStack: [],
   deviceEntries: [],
-  deviceStatus: hasFileSystemAccess() ? "need-gesture" : "unsupported",
+  deviceStatus: "idle",
+  deviceMode: "none",
+  devicePath: "",
+  deviceRootName: "Device",
+  deviceFileCount: 0,
+  deviceBytes: 0,
+  deviceFolders: 0,
+  deviceScanning: false,
+  hardware: null,
   driveFolderId: "root",
   drivePath: [{ id: "root", name: "My Drive" }],
   driveItems: [],
@@ -377,14 +420,12 @@ export const useFiles = create<Store>((set, get) => ({
       const recents = (await idb.getMeta<string[]>("recents")) ?? [];
       const savedHandle = await idb.getMeta<FileSystemDirectoryHandle>("deviceHandle");
       let deviceHandle = null;
-      let deviceStatus = get().deviceStatus;
       let deviceEntries: DeviceEntry[] = [];
       if (savedHandle) {
         const ok = await ensurePermission(savedHandle).catch(() => false);
         if (ok) {
           deviceHandle = savedHandle;
           deviceEntries = await listDirectory(savedHandle);
-          deviceStatus = "ready";
         }
       }
       set({
@@ -395,9 +436,37 @@ export const useFiles = create<Store>((set, get) => ({
         deviceHandle,
         deviceStack: deviceHandle ? [{ name: deviceHandle.name || "Device", handle: deviceHandle }] : [],
         deviceEntries,
-        deviceStatus,
+        deviceStatus: deviceHandle ? "ready" : "idle",
+        deviceMode: deviceHandle ? "fsa" : "none",
+        deviceRootName: deviceHandle?.name || "Device",
       });
+      if (deviceHandle) {
+        const handle = deviceHandle;
+        scanGen += 1;
+        const gen = scanGen;
+        set({ deviceScanning: true });
+        void scanDirectory(handle, (info) => {
+          if (scanGen !== gen) return;
+          set({
+            deviceFileCount: info.files,
+            deviceFolders: info.folders,
+            deviceBytes: info.bytes,
+          });
+        }).then((stats) => {
+          if (scanGen !== gen) return;
+          set({
+            deviceFileCount: stats.files,
+            deviceFolders: stats.folders,
+            deviceBytes: stats.bytes,
+            deviceScanning: false,
+          });
+        }).catch(() => {
+          if (scanGen === gen) set({ deviceScanning: false });
+        });
+      }
       await get().refreshQuota();
+      await get().refreshHardware();
+      void requestPersistentStorage();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : "Failed to open library", ready: false });
     }
@@ -701,20 +770,64 @@ export const useFiles = create<Store>((set, get) => ({
   ingestFiles: async (files, parentId) => {
     const dest = parentId ?? get().currentFolderId();
     const nodes = { ...get().nodes };
+    const now = Date.now();
+    const folderCache = new Map<string, string>();
+    const ensurePath = async (segments: string[]): Promise<string> => {
+      let cur = dest;
+      let key = "";
+      for (const seg of segments) {
+        key = key ? `${key}/${seg}` : seg;
+        const cached = folderCache.get(key);
+        if (cached) {
+          cur = cached;
+          continue;
+        }
+        const existing = Object.values(nodes).find(
+          (n) => n.parentId === cur && n.kind === "folder" && n.name === seg,
+        );
+        if (existing) {
+          folderCache.set(key, existing.id);
+          cur = existing.id;
+          continue;
+        }
+        const id = uid("folder");
+        const folder: FileNode = {
+          id,
+          parentId: cur,
+          name: seg,
+          kind: "folder",
+          mime: "inode/directory",
+          size: 0,
+          createdAt: now,
+          updatedAt: now,
+          favorite: false,
+          bookmark: false,
+        };
+        nodes[id] = folder;
+        folderCache.set(key, id);
+        await idb.putNode(folder);
+        cur = id;
+      }
+      return cur;
+    };
     for (const file of files) {
       const tid = get().addTransfer({ name: file.name, kind: "upload", status: "running", progress: 20 });
       try {
+        const rel = (file.webkitRelativePath || "").replace(/^\/+/, "");
+        const parts = rel.split("/").filter(Boolean);
+        const folders = parts.length > 1 ? parts.slice(0, -1) : [];
+        const parent = folders.length ? await ensurePath(folders) : dest;
         const id = uid("file");
         const buf = await file.arrayBuffer();
         const node: FileNode = {
           id,
-          parentId: dest,
-          name: uniqueName(nodes, dest, file.name),
+          parentId: parent,
+          name: uniqueName(nodes, parent, file.name),
           kind: "file",
           mime: file.type || mimeFromName(file.name),
           size: file.size,
-          createdAt: Date.now(),
-          updatedAt: Date.now(),
+          createdAt: now,
+          updatedAt: now,
           favorite: false,
           bookmark: false,
         };
@@ -732,6 +845,7 @@ export const useFiles = create<Store>((set, get) => ({
     }
     set({ nodes });
     await get().refreshQuota();
+    await get().refreshHardware();
     if (files.length) toast.success(files.length === 1 ? `Added ${files[0].name}` : `Added ${files.length} files`);
   },
   downloadNodes: async (ids) => {
@@ -853,20 +967,96 @@ export const useFiles = create<Store>((set, get) => ({
   patchTransfer: (id, p) => {
     set({ transfers: get().transfers.map((t) => (t.id === id ? { ...t, ...p } : t)) });
   },
-  connectDevice: async () => {
-    const handle = await pickDirectory();
+  connectDevice: async (startIn) => {
+    if (!hasFileSystemAccess()) {
+      get().goPlace("device");
+      toast.message("Use Entire folder — this browser cannot keep a live disk handle");
+      return;
+    }
+    const handle = await pickDirectory(startIn);
     if (!handle) return;
     await idb.setMeta("deviceHandle", handle);
     const entries = await listDirectory(handle);
+    scanGen += 1;
+    const gen = scanGen;
     set({
       deviceHandle: handle,
       deviceStack: [{ name: handle.name || "Device", handle }],
       deviceEntries: entries,
       deviceStatus: "ready",
+      deviceMode: "fsa",
+      devicePath: "",
+      deviceRootName: handle.name || "Device",
+      deviceFileCount: entries.filter((e) => e.kind === "file").length,
+      deviceFolders: entries.filter((e) => e.kind === "folder").length,
+      deviceBytes: entries.reduce((s, e) => s + e.size, 0),
+      deviceScanning: true,
     });
     get().goPlace("device");
+    toast.success(`Opened ${handle.name || "folder"}`);
+    void requestPersistentStorage();
+    const signal = { cancelled: false };
+    const stop = () => {
+      if (scanGen !== gen) signal.cancelled = true;
+    };
+    const timer = window.setInterval(stop, 400);
+    try {
+      const stats = await scanDirectory(
+        handle,
+        (info) => {
+          if (scanGen !== gen) return;
+          set({
+            deviceFileCount: info.files,
+            deviceFolders: info.folders,
+            deviceBytes: info.bytes,
+          });
+        },
+        signal,
+      );
+      if (scanGen === gen) {
+        set({
+          deviceFileCount: stats.files,
+          deviceFolders: stats.folders,
+          deviceBytes: stats.bytes,
+          deviceScanning: false,
+        });
+      }
+    } catch {
+      if (scanGen === gen) set({ deviceScanning: false });
+    } finally {
+      window.clearInterval(timer);
+    }
+  },
+  mountDeviceFiles: async (files) => {
+    if (!files.length) return;
+    scanGen += 1;
+    const mount = mountFileList(files);
+    const entries = listTreePath("");
+    set({
+      deviceHandle: null,
+      deviceStack: [],
+      deviceEntries: entries,
+      deviceStatus: "ready",
+      deviceMode: "tree",
+      devicePath: "",
+      deviceRootName: mount.rootName,
+      deviceFileCount: mount.fileCount,
+      deviceFolders: entries.filter((e) => e.kind === "folder").length,
+      deviceBytes: mount.totalBytes,
+      deviceScanning: false,
+    });
+    get().goPlace("device");
+    toast.success(
+      `${mount.fileCount} file${mount.fileCount === 1 ? "" : "s"} from ${mount.rootName}`,
+    );
+    void get().refreshHardware();
   },
   enterDeviceFolder: async (name) => {
+    if (get().deviceMode === "tree") {
+      const next = get().devicePath ? `${get().devicePath}/${name}` : name;
+      set({ devicePath: next, deviceEntries: listTreePath(next) });
+      return;
+    }
     const stack = get().deviceStack;
     const cur = stack[stack.length - 1];
     if (!cur) return;
@@ -876,27 +1066,35 @@ export const useFiles = create<Store>((set, get) => ({
     set({ deviceStack: [...stack, { name, handle: next }], deviceEntries: entries });
   },
   deviceUp: async () => {
+    if (get().deviceMode === "tree") {
+      const next = treeParent(get().devicePath);
+      set({ devicePath: next, deviceEntries: listTreePath(next) });
+      return;
+    }
     const stack = get().deviceStack.slice(0, -1);
     if (!stack.length) return;
     const cur = stack[stack.length - 1];
     set({ deviceStack: stack, deviceEntries: await listDirectory(cur.handle) });
   },
   refreshDevice: async () => {
+    if (get().deviceMode === "tree") {
+      set({ deviceEntries: listTreePath(get().devicePath) });
+      return;
+    }
     const stack = get().deviceStack;
     const cur = stack[stack.length - 1];
     if (cur) set({ deviceEntries: await listDirectory(cur.handle) });
   },
   importDeviceFile: async (name) => {
-    const cur = get().deviceStack[get().deviceStack.length - 1];
-    if (!cur) return;
-    const file = await readDeviceFile(cur.handle, name);
+    const file = await resolveDeviceFile(get, name);
     if (file) await get().ingestFiles([file], FOLDER_IDS.downloads);
   },
   openDeviceFile: async (name) => {
-    const cur = get().deviceStack[get().deviceStack.length - 1];
-    if (!cur) return;
-    const file = await readDeviceFile(cur.handle, name);
-    if (!file) return;
+    const file = await resolveDeviceFile(get, name);
+    if (!file) {
+      toast.error("Reconnect this folder to open the file");
+      return;
+    }
     const id = uid("dev");
     const buf = await file.arrayBuffer();
     const node: FileNode = {
@@ -916,6 +1114,22 @@ export const useFiles = create<Store>((set, get) => ({
     blobCache.set(id, new Blob([buf], { type: node.mime }));
     set({ nodes: { ...get().nodes, [id]: node } });
     get().openViewer(id);
+  },
+  importDeviceFolder: async () => {
+    let files: File[] = [];
+    if (get().deviceMode === "tree") {
+      files = filesUnderPath(get().devicePath).slice(0, 400);
+    } else {
+      const cur = get().deviceStack[get().deviceStack.length - 1];
+      if (!cur) return;
+      files = await collectDirectoryFiles(cur.handle, 400);
+    }
+    if (!files.length) {
+      toast.error("No files in this folder");
+      return;
+    }
+    await get().ingestFiles(files, FOLDER_IDS.downloads);
+    if (files.length >= 400) toast.message("Imported the first 400 files in this tree");
   },
   setDriveItems: (driveItems, driveStatus, driveError = null) => set({ driveItems, driveStatus, driveError }),
   setDriveFolder: (id, name) => set({ driveFolderId: id, drivePath: [...get().drivePath, { id, name }] }),
@@ -997,6 +1211,23 @@ export const useFiles = create<Store>((set, get) => ({
       /* ignore */
     }
     set({ storageBytes, quotaBytes });
+  },
+  refreshHardware: async () => {
+    try {
+      const hardware = await readHardware();
+      set({
+        hardware,
+        storageBytes: hardware.romUsed || get().storageBytes,
+        quotaBytes: hardware.romQuota || get().quotaBytes,
+      });
+    } catch {
+      /* ignore */
+    }
+  },
+  persistStorage: async () => {
+    const ok = await requestPersistentStorage();
+    await get().refreshHardware();
+    toast[ok ? "success" : "error"](ok ? "Storage will stay on this device" : "Browser denied persistent storage");
   },
   resetLibrary: async () => {
     await idb.clearLibrary();
