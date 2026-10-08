@@ -20,6 +20,7 @@ import {
 import { useP2PRoom } from "@/lib/multiplayer/use-p2p-room";
 import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
+import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT } from "@/lib/files/fs-access";
 
 export function SettingsPanel() {
   const open = useFiles((s) => s.settingsOpen);
@@ -257,46 +258,78 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
   const hardware = useFiles((s) => s.hardware);
   const deviceBytes = useFiles((s) => s.deviceBytes);
   const deviceCount = useFiles((s) => s.deviceFileCount);
+  const deviceFolders = useFiles((s) => s.deviceFolders);
   const scanning = useFiles((s) => s.deviceScanning);
+  const storageBytes = useFiles((s) => s.storageBytes);
+  const quotaBytes = useFiles((s) => s.quotaBytes);
+  const rootName = useFiles((s) => s.deviceRootName);
+  const ready = useFiles((s) => s.deviceStatus === "ready");
 
   useEffect(() => {
-    if (!hardware) void useFiles.getState().refreshHardware();
-  }, [hardware]);
+    void useFiles.getState().refreshHardware();
+    const id = window.setInterval(() => void useFiles.getState().refreshHardware(), 8000);
+    return () => window.clearInterval(id);
+  }, []);
 
   const ramTotal = hardware?.ramBytes ?? hardware?.heapLimit ?? 0;
   const ramUsed = hardware?.heapUsed ?? 0;
-  const romTotal = hardware?.romQuota ?? 0;
-  const romUsed = hardware?.romUsed ?? 0;
-  const ramPct = ramTotal ? Math.min(100, (ramUsed / ramTotal) * 100) : 0;
+  const romTotal = hardware?.romQuota || quotaBytes;
+  const romUsed = hardware?.romUsed || storageBytes;
+  const ramPct = ramTotal ? Math.min(100, (ramUsed / ramTotal) * 100) : ramUsed ? 8 : 0;
   const romPct = romTotal ? Math.min(100, (romUsed / romTotal) * 100) : 0;
+  const diskPct =
+    romTotal && deviceBytes ? Math.min(100, (deviceBytes / Math.max(romTotal, deviceBytes)) * 100) : deviceBytes ? 40 : 0;
+
+  const ramLabel = hardware?.ramGb
+    ? `${hardware.ramGb} GB`
+    : ramTotal
+      ? formatBytes(ramTotal)
+      : hardware?.cores
+        ? `${hardware.cores} CPU cores`
+        : "Hidden by this browser";
+  const ramDetail = [
+    hardware?.ramSource === "device" ? "Device RAM reported by the browser" : null,
+    ramUsed ? `${formatBytes(ramUsed)} in use by this app` : null,
+    hardware?.heapLimit ? `heap cap ${formatBytes(hardware.heapLimit)}` : null,
+    hardware?.cores ? `${hardware.cores} cores` : null,
+    hardware?.model || hardware?.platform || null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  const indexed = deviceBytes > 0;
+  const romLabel = indexed
+    ? `${formatBytes(deviceBytes)} on disk`
+    : romTotal
+      ? `${formatBytes(romUsed)} / ${formatBytes(romTotal)}`
+      : "Grant a folder";
+  const romDetail = indexed
+    ? `${deviceCount.toLocaleString()} files indexed${scanning ? " · still scanning" : ""}${romTotal ? ` · browser quota ${formatBytes(romTotal)}` : ""}`
+    : hardware?.romDetail ||
+      (hardware?.persisted ? "App storage on this device" : "Browser quota — not the whole phone until a folder is granted");
 
   return (
-    <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2")}>
-      <MeterCard
-        icon={<MemoryStick className="size-4 text-gold" />}
-        label="RAM"
-        value={
-          hardware?.ramGb
-            ? `~${hardware.ramGb} GB device`
-            : ramTotal
-              ? formatBytes(ramTotal)
-              : "Not reported"
-        }
-        detail={ramUsed ? `${formatBytes(ramUsed)} in use by this app` : hardware?.platform ?? ""}
-        pct={ramPct}
-      />
+    <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
+      <MeterCard icon={<MemoryStick className="size-4 text-gold" />} label="RAM" value={ramLabel} detail={ramDetail || hardware?.platform || ""} pct={ramPct} />
       <MeterCard
         icon={<Cpu className="size-4 text-gold" />}
         label="ROM"
-        value={romTotal ? `${formatBytes(romUsed)} / ${formatBytes(romTotal)}` : "Measuring…"}
+        value={romLabel}
+        detail={romDetail}
+        pct={romPct}
+      />
+      <MeterCard
+        icon={<HardDrive className="size-4 text-gold" />}
+        label="Device disk"
+        value={ready || deviceCount ? `${formatBytes(deviceBytes)}${scanning ? "…" : ""}` : "Not connected"}
         detail={
           deviceCount
-            ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} files · ${formatBytes(deviceBytes)} on disk`
-            : hardware?.persisted
-              ? "Persistent app storage"
-              : "Grant a device folder to read phone storage"
+            ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${rootName ? ` · ${rootName}` : ""}`
+            : hardware?.embedded
+              ? "Open fullscreen, then pick Internal / Download / DCIM"
+              : "Connect Internal storage, SD card, or Downloads"
         }
-        pct={romPct}
+        pct={diskPct}
       />
     </div>
   );
@@ -341,6 +374,8 @@ export function DevicePane() {
   const folders = useFiles((s) => s.deviceFolders);
   const bytes = useFiles((s) => s.deviceBytes);
   const scanning = useFiles((s) => s.deviceScanning);
+  const index = useFiles((s) => s.deviceIndex);
+  const volumes = useFiles((s) => s.deviceVolumes);
   const showHidden = useFiles((s) => s.settings.showHidden);
   const [q, setQ] = useState("");
   const dirRef = useRef<HTMLInputElement>(null);
@@ -355,6 +390,17 @@ export function DevicePane() {
     el.multiple = true;
   }, []);
 
+  useEffect(() => {
+    const onFolder = () => dirRef.current?.click();
+    const onFiles = () => filesRef.current?.click();
+    window.addEventListener(DEVICE_PICK_EVENT, onFolder);
+    window.addEventListener(DEVICE_FILES_EVENT, onFiles);
+    return () => {
+      window.removeEventListener(DEVICE_PICK_EVENT, onFolder);
+      window.removeEventListener(DEVICE_FILES_EVENT, onFiles);
+    };
+  }, []);
+
   const takeFiles = (list: FileList | null) => {
     const files = list ? [...list] : [];
     if (!files.length) return;
@@ -362,8 +408,12 @@ export function DevicePane() {
   };
 
   const visible = entries.filter((e) => showHidden || !e.name.startsWith("."));
-  const filtered = q.trim()
-    ? visible.filter((e) => e.name.toLowerCase().includes(q.trim().toLowerCase()))
+  const qn = q.trim().toLowerCase();
+  const filtered = qn
+    ? (index.length
+        ? index.filter((e) => e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn))
+        : visible.filter((e) => e.name.toLowerCase().includes(qn))
+      ).slice(0, 200)
     : visible;
   const crumb = mode === "tree" ? [rootName, ...path.split("/").filter(Boolean)] : stack.map((s) => s.name);
   const ready = status === "ready";
@@ -418,7 +468,7 @@ export function DevicePane() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button size="sm" onClick={() => void useFiles.getState().connectDevice()}>
-          Open disk folder
+          Open internal storage
         </Button>
         <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
           Entire folder
@@ -453,9 +503,22 @@ export function DevicePane() {
         ))}
       </div>
       <p className="mt-3 max-w-xl text-xs text-muted">
-        Browsers will not silently open the whole phone. Choose Internal storage, Download, DCIM, or SD
-        card in the system picker — then every file in that tree can be previewed, searched, and imported.
+        Android and iOS will not let a website open the whole phone by itself. Tap Open internal
+        storage, choose the top Internal storage or SD card folder, and allow access. This app then
+        indexes every file in that tree, keeps the permission, and adds more volumes without erasing
+        the last one. RAM is the size the browser reports. ROM is the files actually read plus the
+        browser storage quota.
       </p>
+      {volumes.length > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-2">
+          {volumes.map((v) => (
+            <li key={v.name} className="rounded-full bg-elevated px-3 py-1 text-xs text-muted hairline">
+              {v.name}
+              {v.files ? ` · ${v.files.toLocaleString()} files · ${formatBytes(v.bytes)}` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
 
       {ready ? (
         <>
@@ -481,7 +544,7 @@ export function DevicePane() {
           </div>
           <p className="mt-2 truncate text-xs text-muted">{crumb.join(" / ")}</p>
           <div className="mt-3">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Filter this folder" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search every file on this disk" />
           </div>
           <ul className="mt-3 overflow-hidden rounded-lg hairline">
             {filtered.length === 0 ? (
@@ -494,7 +557,7 @@ export function DevicePane() {
                     className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-3 text-left hover:bg-elevated"
                     onClick={() => {
                       if (e.kind === "folder") void useFiles.getState().enterDeviceFolder(e.name);
-                      else void useFiles.getState().openDeviceFile(e.name);
+                      else void useFiles.getState().openDeviceFile(qn ? e.path || e.name : e.name);
                     }}
                   >
                     <span className="flex min-w-0 items-center gap-3">
@@ -510,7 +573,7 @@ export function DevicePane() {
                       size="sm"
                       variant="ghost"
                       className="mr-1 shrink-0"
-                      onClick={() => void useFiles.getState().importDeviceFile(e.name)}
+                      onClick={() => void useFiles.getState().importDeviceFile(qn ? e.path || e.name : e.name)}
                     >
                       Import
                     </Button>
@@ -520,17 +583,30 @@ export function DevicePane() {
             )}
           </ul>
         </>
+      ) : status === "need-gesture" ? (
+        <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">
+          <HardDrive className="size-8 text-gold" />
+          <h2 className="text-lg font-medium">Resume {rootName}</h2>
+          <p className="max-w-md text-sm text-muted">
+            This device already granted a folder. Tap once so the browser can read it again, then every
+            file in that tree is scanned.
+          </p>
+          <Button onClick={() => void useFiles.getState().resumeDeviceAccess()}>
+            <FolderOpen className="size-4" />
+            Resume storage access
+          </Button>
+        </div>
       ) : (
         <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">
           <HardDrive className="size-8 text-gold" />
           <h2 className="text-lg font-medium">Connect device storage</h2>
           <p className="max-w-md text-sm text-muted">
-            Chrome / Edge: Open disk folder for a live mount. iPhone and Firefox: Entire folder copies the
-            tree into the app so you can browse every file you granted.
+            Pick Internal storage, Download, DCIM, or the SD card. This app then walks every file in that
+            tree for preview, search, RAM/ROM meters, and import.
           </p>
-          <Button onClick={() => dirRef.current?.click()}>
+          <Button onClick={() => void useFiles.getState().connectDevice()}>
             <FolderOpen className="size-4" />
-            Choose a folder
+            Connect device storage
           </Button>
         </div>
       )}
@@ -874,5 +950,54 @@ function Hint({
         <Button onClick={onAction}>{action}</Button>
       )}
     </div>
+  );
+}
+
+export function DevicePickers() {
+  const dirRef = useRef<HTMLInputElement>(null);
+  const filesRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const el = dirRef.current;
+    if (el) {
+      el.setAttribute("webkitdirectory", "");
+      el.setAttribute("directory", "");
+      el.multiple = true;
+    }
+    const onFolder = () => dirRef.current?.click();
+    const onFiles = () => filesRef.current?.click();
+    window.addEventListener(DEVICE_PICK_EVENT, onFolder);
+    window.addEventListener(DEVICE_FILES_EVENT, onFiles);
+    return () => {
+      window.removeEventListener(DEVICE_PICK_EVENT, onFolder);
+      window.removeEventListener(DEVICE_FILES_EVENT, onFiles);
+    };
+  }, []);
+
+  return (
+    <>
+      <input
+        ref={dirRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={(e) => {
+          const files = e.target.files ? [...e.target.files] : [];
+          e.target.value = "";
+          if (files.length) void useFiles.getState().mountDeviceFiles(files);
+        }}
+      />
+      <input
+        ref={filesRef}
+        type="file"
+        className="hidden"
+        multiple
+        onChange={(e) => {
+          const files = e.target.files ? [...e.target.files] : [];
+          e.target.value = "";
+          if (files.length) void useFiles.getState().ingestFiles(files);
+        }}
+      />
+    </>
   );
 }

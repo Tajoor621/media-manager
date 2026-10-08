@@ -31,8 +31,12 @@ import {
   listTreePath,
   mountFileList,
   openDeviceSubdir,
+  permissionState,
   pickDirectory,
   readDeviceFile,
+  readDevicePath,
+  requestDeviceFolderInput,
+  fsaUsable,
   scanDirectory,
   treeParent,
   writeDeviceFile,
@@ -42,6 +46,84 @@ import { readHardware, requestPersistentStorage, type HardwareInfo } from "./har
 
 const SETTINGS_KEY = "mm-621-settings";
 let scanGen = 0;
+let volumeHandles: FileSystemDirectoryHandle[] = [];
+
+type VolumeSnap = { name: string; files: number; folders: number; bytes: number };
+
+async function rememberVolumes(handles: FileSystemDirectoryHandle[]) {
+  const unique: FileSystemDirectoryHandle[] = [];
+  const seen = new Set<string>();
+  for (const handle of handles) {
+    const key = handle.name || "Storage";
+    if (seen.has(key)) continue;
+    seen.add(key);
+    unique.push(handle);
+  }
+  volumeHandles = unique;
+  await idb.setMeta("deviceVolumes", unique);
+  if (unique[0]) await idb.setMeta("deviceHandle", unique[0]);
+  return unique;
+}
+
+async function scanSavedVolumes(
+  handles: FileSystemDirectoryHandle[],
+  set: (partial: Partial<Store>) => void,
+) {
+  const unique = await rememberVolumes(handles);
+  const active = unique[0];
+  if (!active) return;
+  let entries: DeviceEntry[] = [];
+  try {
+    entries = await listDirectory(active);
+  } catch {
+    entries = [];
+  }
+  set({
+    deviceHandle: active,
+    deviceStack: [{ name: active.name || "Device", handle: active }],
+    deviceEntries: entries,
+    deviceStatus: "ready",
+    deviceMode: "fsa",
+    devicePath: "",
+    deviceRootName: unique.length > 1 ? `${unique.length} storage volumes` : active.name || "Device",
+    deviceVolumes: unique.map((h) => ({ name: h.name || "Storage", files: 0, folders: 0, bytes: 0 })),
+    deviceScanning: true,
+    deviceFileCount: entries.filter((e) => e.kind === "file").length,
+    deviceFolders: entries.filter((e) => e.kind === "folder").length,
+    deviceBytes: entries.reduce((s, e) => s + e.size, 0),
+    deviceIndex: [],
+  });
+  scanGen += 1;
+  const gen = scanGen;
+  let files = 0;
+  let folders = 0;
+  let bytes = 0;
+  const index: DeviceEntry[] = [];
+  const snaps: VolumeSnap[] = [];
+  for (const handle of unique) {
+    if (scanGen !== gen) return;
+    const stats = await scanDirectory(handle, (info) => {
+      if (scanGen !== gen) return;
+      set({
+        deviceFileCount: files + info.files,
+        deviceFolders: folders + info.folders,
+        deviceBytes: bytes + info.bytes,
+        deviceScanning: true,
+      });
+    });
+    files += stats.files;
+    folders += stats.folders;
+    bytes += stats.bytes;
+    const prefix = handle.name || "Storage";
+    for (const entry of stats.index) {
+      if (index.length >= 80000) break;
+      index.push({ ...entry, path: entry.path ? `${prefix}/${entry.path}` : prefix });
+    }
+    snaps.push({ name: prefix, files: stats.files, folders: stats.folders, bytes: stats.bytes });
+    set({ deviceFileCount: files, deviceFolders: folders, deviceBytes: bytes, deviceIndex: index, deviceVolumes: snaps });
+  }
+  if (scanGen === gen) set({ deviceScanning: false });
+}
 
 let nameResolver: ((value: string | null) => void) | null = null;
 
@@ -148,8 +230,23 @@ async function resolveDeviceFile(
   name: string,
 ): Promise<File | null> {
   if (get().deviceMode === "tree") {
-    const path = get().devicePath ? `${get().devicePath}/${name}` : name;
+    const path = name.includes("/") ? name : get().devicePath ? `${get().devicePath}/${name}` : name;
     return getDeviceBagFile(path) ?? getDeviceBagFile(name) ?? null;
+  }
+  if (name.includes("/")) {
+    const slash = name.indexOf("/");
+    const head = name.slice(0, slash);
+    const rest = name.slice(slash + 1);
+    const vol = volumeHandles.find((h) => h.name === head);
+    if (vol && rest) {
+      const fromVol = await readDevicePath(vol, rest);
+      if (fromVol) return fromVol;
+    }
+    const root = get().deviceStack[0]?.handle;
+    if (root) {
+      const fromRoot = await readDevicePath(root, rest || name);
+      if (fromRoot) return fromRoot;
+    }
   }
   const cur = get().deviceStack[get().deviceStack.length - 1];
   if (!cur) return null;
@@ -188,6 +285,8 @@ type Store = {
   deviceBytes: number;
   deviceFolders: number;
   deviceScanning: boolean;
+  deviceIndex: DeviceEntry[];
+  deviceVolumes: VolumeSnap[];
   hardware: HardwareInfo | null;
   driveFolderId: string;
   drivePath: { id: string; name: string }[];
@@ -244,6 +343,7 @@ type Store = {
   addTransfer: (t: Omit<Transfer, "id"> & { id?: string }) => string;
   patchTransfer: (id: string, p: Partial<Transfer>) => void;
   connectDevice: (startIn?: WellKnownDir) => Promise<void>;
+  resumeDeviceAccess: () => Promise<void>;
   mountDeviceFiles: (files: File[]) => Promise<void>;
   enterDeviceFolder: (name: string) => Promise<void>;
   deviceUp: () => Promise<void>;
@@ -372,6 +472,8 @@ export const useFiles = create<Store>((set, get) => ({
   deviceBytes: 0,
   deviceFolders: 0,
   deviceScanning: false,
+  deviceIndex: [],
+  deviceVolumes: [],
   hardware: null,
   driveFolderId: "root",
   drivePath: [{ id: "root", name: "My Drive" }],
@@ -418,52 +520,37 @@ export const useFiles = create<Store>((set, get) => ({
         }
       }
       const recents = (await idb.getMeta<string[]>("recents")) ?? [];
-      const savedHandle = await idb.getMeta<FileSystemDirectoryHandle>("deviceHandle");
-      let deviceHandle = null;
-      let deviceEntries: DeviceEntry[] = [];
-      if (savedHandle) {
-        const ok = await ensurePermission(savedHandle).catch(() => false);
-        if (ok) {
-          deviceHandle = savedHandle;
-          deviceEntries = await listDirectory(savedHandle);
-        }
+      const savedMany = (await idb.getMeta<FileSystemDirectoryHandle[]>("deviceVolumes")) ?? [];
+      const savedOne = await idb.getMeta<FileSystemDirectoryHandle>("deviceHandle");
+      const saved = [...savedMany];
+      if (savedOne && !saved.some((h) => h.name === savedOne.name)) saved.unshift(savedOne);
+      const granted: FileSystemDirectoryHandle[] = [];
+      const pending: FileSystemDirectoryHandle[] = [];
+      for (const handle of saved) {
+        const state = await permissionState(handle).catch(() => "unknown" as const);
+        if (state === "granted") granted.push(handle);
+        else pending.push(handle);
       }
+      volumeHandles = granted.length ? granted : pending;
       set({
         nodes: Object.fromEntries(nodes.map((n) => [n.id, n])),
         recents,
         ready: true,
         error: null,
-        deviceHandle,
-        deviceStack: deviceHandle ? [{ name: deviceHandle.name || "Device", handle: deviceHandle }] : [],
-        deviceEntries,
-        deviceStatus: deviceHandle ? "ready" : "idle",
-        deviceMode: deviceHandle ? "fsa" : "none",
-        deviceRootName: deviceHandle?.name || "Device",
+        deviceHandle: granted[0] ?? null,
+        deviceStack: granted[0] ? [{ name: granted[0].name || "Device", handle: granted[0] }] : [],
+        deviceEntries: [],
+        deviceStatus: granted.length ? "ready" : pending.length ? "need-gesture" : "idle",
+        deviceMode: granted.length ? "fsa" : "none",
+        deviceRootName: (granted[0] ?? pending[0])?.name || "Device",
+        deviceVolumes: (granted.length ? granted : pending).map((h) => ({
+          name: h.name || "Storage",
+          files: 0,
+          folders: 0,
+          bytes: 0,
+        })),
       });
-      if (deviceHandle) {
-        const handle = deviceHandle;
-        scanGen += 1;
-        const gen = scanGen;
-        set({ deviceScanning: true });
-        void scanDirectory(handle, (info) => {
-          if (scanGen !== gen) return;
-          set({
-            deviceFileCount: info.files,
-            deviceFolders: info.folders,
-            deviceBytes: info.bytes,
-          });
-        }).then((stats) => {
-          if (scanGen !== gen) return;
-          set({
-            deviceFileCount: stats.files,
-            deviceFolders: stats.folders,
-            deviceBytes: stats.bytes,
-            deviceScanning: false,
-          });
-        }).catch(() => {
-          if (scanGen === gen) set({ deviceScanning: false });
-        });
-      }
+      if (granted.length) void scanSavedVolumes(granted, set);
       await get().refreshQuota();
       await get().refreshHardware();
       void requestPersistentStorage();
@@ -968,87 +1055,89 @@ export const useFiles = create<Store>((set, get) => ({
     set({ transfers: get().transfers.map((t) => (t.id === id ? { ...t, ...p } : t)) });
   },
   connectDevice: async (startIn) => {
-    if (!hasFileSystemAccess()) {
-      get().goPlace("device");
-      toast.message("Use Entire folder — this browser cannot keep a live disk handle");
+    get().goPlace("device");
+    if (!fsaUsable()) {
+      requestDeviceFolderInput();
+      toast.message("Choose Internal storage, SD card, Download, or DCIM. Every file in that folder is indexed.");
       return;
     }
-    const handle = await pickDirectory(startIn);
-    if (!handle) return;
-    await idb.setMeta("deviceHandle", handle);
-    const entries = await listDirectory(handle);
-    scanGen += 1;
-    const gen = scanGen;
-    set({
-      deviceHandle: handle,
-      deviceStack: [{ name: handle.name || "Device", handle }],
-      deviceEntries: entries,
-      deviceStatus: "ready",
-      deviceMode: "fsa",
-      devicePath: "",
-      deviceRootName: handle.name || "Device",
-      deviceFileCount: entries.filter((e) => e.kind === "file").length,
-      deviceFolders: entries.filter((e) => e.kind === "folder").length,
-      deviceBytes: entries.reduce((s, e) => s + e.size, 0),
-      deviceScanning: true,
-    });
-    get().goPlace("device");
-    toast.success(`Opened ${handle.name || "folder"}`);
-    void requestPersistentStorage();
-    const signal = { cancelled: false };
-    const stop = () => {
-      if (scanGen !== gen) signal.cancelled = true;
-    };
-    const timer = window.setInterval(stop, 400);
-    try {
-      const stats = await scanDirectory(
-        handle,
-        (info) => {
-          if (scanGen !== gen) return;
-          set({
-            deviceFileCount: info.files,
-            deviceFolders: info.folders,
-            deviceBytes: info.bytes,
-          });
-        },
-        signal,
-      );
-      if (scanGen === gen) {
-        set({
-          deviceFileCount: stats.files,
-          deviceFolders: stats.folders,
-          deviceBytes: stats.bytes,
-          deviceScanning: false,
-        });
-      }
-    } catch {
-      if (scanGen === gen) set({ deviceScanning: false });
-    } finally {
-      window.clearInterval(timer);
+    const picked = await pickDirectory(startIn);
+    if (!picked.handle) {
+      if (picked.reason === "cancelled") return;
+      requestDeviceFolderInput();
+      toast.message("Picker blocked in this window. Choose the folder from the file dialog.");
+      return;
     }
+    const handle = picked.handle;
+    const handles = [...volumeHandles.filter((h) => h.name !== handle.name), handle];
+    toast.success(`Indexing ${handle.name || "storage"}…`);
+    void requestPersistentStorage();
+    void get().refreshHardware();
+    try {
+      await scanSavedVolumes(handles, set);
+      const snap = get().deviceVolumes.find((v) => v.name === (handle.name || "Storage"));
+      toast.success(
+        snap
+          ? `${handle.name}: ${snap.files.toLocaleString()} files · ${snap.folders.toLocaleString()} folders`
+          : `Opened ${handle.name || "storage"}`,
+      );
+    } catch {
+      set({ deviceScanning: false });
+      toast.error("Could not read that folder. Pick it again and allow access.");
+    }
+  },
+  resumeDeviceAccess: async () => {
+    const pending = volumeHandles;
+    if (!pending.length) {
+      await get().connectDevice();
+      return;
+    }
+    const granted: FileSystemDirectoryHandle[] = [];
+    for (const handle of pending) {
+      if (await ensurePermission(handle)) granted.push(handle);
+    }
+    if (!granted.length) {
+      requestDeviceFolderInput();
+      toast.message("Permission still needed. Pick Internal storage or the SD card.");
+      return;
+    }
+    await scanSavedVolumes(granted, set);
+    toast.success(`Reading ${granted.length} storage volume${granted.length === 1 ? "" : "s"}`);
   },
   mountDeviceFiles: async (files) => {
     if (!files.length) return;
     scanGen += 1;
-    const mount = mountFileList(files);
-    const entries = listTreePath("");
+    const append = get().deviceMode === "tree" && get().deviceStatus === "ready";
+    const mount = mountFileList(files, { append });
+    const entries = listTreePath(append ? get().devicePath : "");
+    const indexed = files.map((f) => ({
+      name: f.name,
+      path: (f.webkitRelativePath || f.name).replace(/^\/+/, ""),
+      kind: "file" as const,
+      size: f.size,
+      mime: f.type || mimeFromName(f.name),
+      lastModified: f.lastModified,
+    }));
     set({
       deviceHandle: null,
       deviceStack: [],
       deviceEntries: entries,
       deviceStatus: "ready",
       deviceMode: "tree",
-      devicePath: "",
-      deviceRootName: mount.rootName,
-      deviceFileCount: mount.fileCount,
-      deviceFolders: entries.filter((e) => e.kind === "folder").length,
-      deviceBytes: mount.totalBytes,
+      devicePath: append ? get().devicePath : "",
+      deviceRootName: append ? get().deviceRootName : mount.rootName,
+      deviceFileCount: append ? get().deviceFileCount + mount.fileCount : mount.fileCount,
+      deviceFolders: listTreePath("").filter((e) => e.kind === "folder").length,
+      deviceBytes: append ? get().deviceBytes + mount.totalBytes : mount.totalBytes,
+      deviceIndex: append ? [...get().deviceIndex, ...indexed].slice(0, 80000) : indexed,
+      deviceVolumes: [
+        ...(append ? get().deviceVolumes : []),
+        { name: mount.rootName, files: mount.fileCount, folders: 0, bytes: mount.totalBytes },
+      ],
       deviceScanning: false,
     });
     get().goPlace("device");
-    toast.success(
-      `${mount.fileCount} file${mount.fileCount === 1 ? "" : "s"} from ${mount.rootName}`,
-    );
+    toast.success(`${mount.fileCount.toLocaleString()} files from ${mount.rootName}`);
     void get().refreshHardware();
   },
   enterDeviceFolder: async (name) => {
