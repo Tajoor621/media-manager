@@ -41,7 +41,8 @@ import { formatBytes } from "@/lib/files/format";
 import { Button, IconButton, Input, Modal } from "@/components/ui";
 import { FilePane, ConfirmBar } from "./FilePane";
 import { MiniPlayer, ViewerHost } from "./Viewers";
-import { CloudPane, CommandPalette, DevicePane, NearbyPanel, SettingsPanel, StorageMeters } from "./Panels";
+import { CloudPane, CommandPalette, DevicePane, DevicePickers, NearbyPanel, SettingsPanel, StorageMeters } from "./Panels";
+import { requestDeviceFolderInput } from "@/lib/files/fs-access";
 import { BrandMark, BrandWordmark } from "./Brand";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +71,8 @@ export function AppShell() {
 
   useEffect(() => {
     void hydrate();
+    const id = window.setInterval(() => void useFiles.getState().refreshHardware(), 12000);
+    return () => window.clearInterval(id);
   }, [hydrate]);
 
   useEffect(() => {
@@ -183,6 +186,7 @@ export function AppShell() {
       <CommandPalette />
       <NearbyPanel />
       <NamePrompt />
+      <DevicePickers />
       <Toaster
         theme={theme === "light" ? "light" : "dark"}
         position="bottom-center"
@@ -692,8 +696,8 @@ function MobileNav() {
   const place = useFiles((s) => s.currentPlace());
   const items: { id: PlaceId | "more"; label: string; icon: typeof Home }[] = [
     { id: "internal", label: "Files", icon: Home },
+    { id: "device", label: "Device", icon: HardDrive },
     { id: "photos", label: "Media", icon: ImageIcon },
-    { id: "drive", label: "Cloud", icon: Cloud },
     { id: "more", label: "More", icon: Menu },
   ];
   return (
@@ -708,7 +712,11 @@ function MobileNav() {
           )}
           onClick={() => {
             if (it.id === "more") useFiles.getState().setSidebarOpen(true);
-            else useFiles.getState().goPlace(it.id);
+            else if (it.id === "device") {
+              const state = useFiles.getState();
+              state.goPlace("device");
+              if (state.deviceStatus !== "ready") requestDeviceFolderInput();
+            } else useFiles.getState().goPlace(it.id);
           }}
         >
           <it.icon className="size-5" />

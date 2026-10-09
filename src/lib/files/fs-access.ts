@@ -47,6 +47,14 @@ export function requestDeviceFilesInput() {
   window.dispatchEvent(new Event(DEVICE_FILES_EVENT));
 }
 
+export function prefersDirectoryInput(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent || "";
+  if (/Android|iPhone|iPad|iPod/i.test(ua)) return true;
+  const touch = navigator.maxTouchPoints > 1;
+  return touch && /Mobile/i.test(ua);
+}
+
 export function fsaUsable(): boolean {
   if (!hasFileSystemAccess()) return false;
   if (typeof window === "undefined" || !window.isSecureContext) return false;

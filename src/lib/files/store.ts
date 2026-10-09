@@ -37,6 +37,7 @@ import {
   readDevicePath,
   requestDeviceFolderInput,
   fsaUsable,
+  prefersDirectoryInput,
   scanDirectory,
   treeParent,
   writeDeviceFile,
@@ -122,7 +123,15 @@ async function scanSavedVolumes(
     snaps.push({ name: prefix, files: stats.files, folders: stats.folders, bytes: stats.bytes });
     set({ deviceFileCount: files, deviceFolders: folders, deviceBytes: bytes, deviceIndex: index, deviceVolumes: snaps });
   }
-  if (scanGen === gen) set({ deviceScanning: false });
+  if (scanGen === gen) {
+    set({ deviceScanning: false });
+    void idb.setMeta("deviceSnapshot", {
+      name: unique.length > 1 ? `${unique.length} storage volumes` : active.name || "Device",
+      files,
+      folders,
+      bytes,
+    });
+  }
 }
 
 let nameResolver: ((value: string | null) => void) | null = null;
@@ -520,6 +529,7 @@ export const useFiles = create<Store>((set, get) => ({
         }
       }
       const recents = (await idb.getMeta<string[]>("recents")) ?? [];
+      const snap = await idb.getMeta<{ name: string; files: number; folders: number; bytes: number }>("deviceSnapshot");
       const savedMany = (await idb.getMeta<FileSystemDirectoryHandle[]>("deviceVolumes")) ?? [];
       const savedOne = await idb.getMeta<FileSystemDirectoryHandle>("deviceHandle");
       const saved = [...savedMany];
@@ -542,7 +552,10 @@ export const useFiles = create<Store>((set, get) => ({
         deviceEntries: [],
         deviceStatus: granted.length ? "ready" : pending.length ? "need-gesture" : "idle",
         deviceMode: granted.length ? "fsa" : "none",
-        deviceRootName: (granted[0] ?? pending[0])?.name || "Device",
+        deviceRootName: (granted[0] ?? pending[0])?.name || snap?.name || "Device",
+        deviceFileCount: snap?.files ?? 0,
+        deviceFolders: snap?.folders ?? 0,
+        deviceBytes: snap?.bytes ?? 0,
         deviceVolumes: (granted.length ? granted : pending).map((h) => ({
           name: h.name || "Storage",
           files: 0,
@@ -1056,16 +1069,14 @@ export const useFiles = create<Store>((set, get) => ({
   },
   connectDevice: async (startIn) => {
     get().goPlace("device");
-    if (!fsaUsable()) {
+    if (prefersDirectoryInput() || !fsaUsable()) {
       requestDeviceFolderInput();
-      toast.message("Choose Internal storage, SD card, Download, or DCIM. Every file in that folder is indexed.");
       return;
     }
     const picked = await pickDirectory(startIn);
     if (!picked.handle) {
       if (picked.reason === "cancelled") return;
       requestDeviceFolderInput();
-      toast.message("Picker blocked in this window. Choose the folder from the file dialog.");
       return;
     }
     const handle = picked.handle;
@@ -1138,6 +1149,12 @@ export const useFiles = create<Store>((set, get) => ({
     });
     get().goPlace("device");
     toast.success(`${mount.fileCount.toLocaleString()} files from ${mount.rootName}`);
+    void idb.setMeta("deviceSnapshot", {
+      name: mount.rootName,
+      files: append ? get().deviceFileCount : mount.fileCount,
+      folders: listTreePath("").filter((e) => e.kind === "folder").length,
+      bytes: append ? get().deviceBytes : mount.totalBytes,
+    });
     void get().refreshHardware();
   },
   enterDeviceFolder: async (name) => {

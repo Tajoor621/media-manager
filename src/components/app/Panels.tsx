@@ -297,16 +297,15 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
     .filter(Boolean)
     .join(" · ");
 
-  const indexed = deviceBytes > 0;
+  const indexed = deviceBytes > 0 || deviceCount > 0;
   const romLabel = indexed
-    ? `${formatBytes(deviceBytes)} on disk`
+    ? `${formatBytes(deviceBytes)} read`
     : romTotal
       ? `${formatBytes(romUsed)} / ${formatBytes(romTotal)}`
-      : "Grant a folder";
+      : "Not granted";
   const romDetail = indexed
-    ? `${deviceCount.toLocaleString()} files indexed${scanning ? " · still scanning" : ""}${romTotal ? ` · browser quota ${formatBytes(romTotal)}` : ""}`
-    : hardware?.romDetail ||
-      (hardware?.persisted ? "App storage on this device" : "Browser quota — not the whole phone until a folder is granted");
+    ? `${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${scanning ? " · scanning" : ""}${rootName ? ` · ${rootName}` : ""}`
+    : "Grant Internal storage or the SD card to count real files";
 
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
@@ -325,9 +324,7 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
         detail={
           deviceCount
             ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${rootName ? ` · ${rootName}` : ""}`
-            : hardware?.embedded
-              ? "Open fullscreen, then pick Internal / Download / DCIM"
-              : "Connect Internal storage, SD card, or Downloads"
+            : "Tap Connect and choose the top Internal storage or SD card folder"
         }
         pct={diskPct}
       />
@@ -376,7 +373,6 @@ export function DevicePane() {
   const scanning = useFiles((s) => s.deviceScanning);
   const index = useFiles((s) => s.deviceIndex);
   const volumes = useFiles((s) => s.deviceVolumes);
-  const showHidden = useFiles((s) => s.settings.showHidden);
   const [q, setQ] = useState("");
   const dirRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
@@ -407,13 +403,13 @@ export function DevicePane() {
     void useFiles.getState().mountDeviceFiles(files);
   };
 
-  const visible = entries.filter((e) => showHidden || !e.name.startsWith("."));
+  const visible = entries;
   const qn = q.trim().toLowerCase();
   const filtered = qn
     ? (index.length
         ? index.filter((e) => e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn))
         : visible.filter((e) => e.name.toLowerCase().includes(qn))
-      ).slice(0, 200)
+      ).slice(0, 2000)
     : visible;
   const crumb = mode === "tree" ? [rootName, ...path.split("/").filter(Boolean)] : stack.map((s) => s.name);
   const ready = status === "ready";
@@ -448,7 +444,7 @@ export function DevicePane() {
         onChange={(e) => {
           const files = e.target.files ? [...e.target.files] : [];
           e.target.value = "";
-          if (files.length) void useFiles.getState().ingestFiles(files);
+          if (files.length) void useFiles.getState().mountDeviceFiles(files);
         }}
       />
       <input
@@ -467,8 +463,11 @@ export function DevicePane() {
       <StorageMeters />
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => void useFiles.getState().connectDevice()}>
-          Open internal storage
+        <Button size="sm" onClick={() => dirRef.current?.click()}>
+          Internal storage
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
+          SD card
         </Button>
         <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
           Entire folder
@@ -503,11 +502,9 @@ export function DevicePane() {
         ))}
       </div>
       <p className="mt-3 max-w-xl text-xs text-muted">
-        Android and iOS will not let a website open the whole phone by itself. Tap Open internal
-        storage, choose the top Internal storage or SD card folder, and allow access. This app then
-        indexes every file in that tree, keeps the permission, and adds more volumes without erasing
-        the last one. RAM is the size the browser reports. ROM is the files actually read plus the
-        browser storage quota.
+        Tap Internal storage or SD card, then choose the top folder with that name — not a single album.
+        The phone then hands over every file inside it. Hidden files stay visible here. RAM is the memory
+        figure this browser is allowed to report.
       </p>
       {volumes.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2">
@@ -604,7 +601,7 @@ export function DevicePane() {
             Pick Internal storage, Download, DCIM, or the SD card. This app then walks every file in that
             tree for preview, search, RAM/ROM meters, and import.
           </p>
-          <Button onClick={() => void useFiles.getState().connectDevice()}>
+          <Button onClick={() => dirRef.current?.click()}>
             <FolderOpen className="size-4" />
             Connect device storage
           </Button>
