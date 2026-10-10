@@ -1069,33 +1069,38 @@ export const useFiles = create<Store>((set, get) => ({
   },
   connectDevice: async (startIn) => {
     get().goPlace("device");
-    if (prefersDirectoryInput() || !fsaUsable()) {
-      requestDeviceFolderInput();
-      return;
-    }
-    const picked = await pickDirectory(startIn);
-    if (!picked.handle) {
+    if (fsaUsable()) {
+      const picked = await pickDirectory(startIn);
+      if (picked.handle) {
+        const handle = picked.handle;
+        const handles = [...volumeHandles.filter((h) => h.name !== handle.name), handle];
+        toast.success(`Indexing ${handle.name || "storage"}…`);
+        void requestPersistentStorage();
+        void get().refreshHardware();
+        try {
+          await scanSavedVolumes(handles, set);
+          const snap = get().deviceVolumes.find((v) => v.name === (handle.name || "Storage"));
+          toast.success(
+            snap
+              ? `${handle.name}: ${snap.files.toLocaleString()} files · ${snap.folders.toLocaleString()} folders`
+              : `Opened ${handle.name || "storage"}`,
+          );
+        } catch {
+          set({ deviceScanning: false });
+          toast.error("Could not read that folder. Pick the storage root again and allow access.");
+        }
+        return;
+      }
       if (picked.reason === "cancelled") return;
+    }
+    if (prefersDirectoryInput() || hasFileSystemAccess() || typeof document !== "undefined") {
       requestDeviceFolderInput();
+      if (!fsaUsable()) {
+        toast.message("Choose the top Internal storage or SD card folder, not a single photo.");
+      }
       return;
     }
-    const handle = picked.handle;
-    const handles = [...volumeHandles.filter((h) => h.name !== handle.name), handle];
-    toast.success(`Indexing ${handle.name || "storage"}…`);
-    void requestPersistentStorage();
-    void get().refreshHardware();
-    try {
-      await scanSavedVolumes(handles, set);
-      const snap = get().deviceVolumes.find((v) => v.name === (handle.name || "Storage"));
-      toast.success(
-        snap
-          ? `${handle.name}: ${snap.files.toLocaleString()} files · ${snap.folders.toLocaleString()} folders`
-          : `Opened ${handle.name || "storage"}`,
-      );
-    } catch {
-      set({ deviceScanning: false });
-      toast.error("Could not read that folder. Pick it again and allow access.");
-    }
+    toast.error("Open this app in Chrome to grant device storage.");
   },
   resumeDeviceAccess: async () => {
     const pending = volumeHandles;

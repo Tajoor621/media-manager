@@ -286,8 +286,11 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
       ? formatBytes(ramTotal)
       : hardware?.cores
         ? `${hardware.cores} CPU cores`
-        : "Hidden by this browser";
+        : hardware?.embedded
+          ? "Blocked in preview"
+          : "Hidden by this browser";
   const ramDetail = [
+    hardware?.embedded ? "Open the full Chrome window — the preview cannot read phone RAM" : null,
     hardware?.ramSource === "device" ? "Device RAM reported by the browser" : null,
     ramUsed ? `${formatBytes(ramUsed)} in use by this app` : null,
     hardware?.heapLimit ? `heap cap ${formatBytes(hardware.heapLimit)}` : null,
@@ -299,13 +302,17 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
 
   const indexed = deviceBytes > 0 || deviceCount > 0;
   const romLabel = indexed
-    ? `${formatBytes(deviceBytes)} read`
+    ? `${formatBytes(deviceBytes)} on device`
     : romTotal
       ? `${formatBytes(romUsed)} / ${formatBytes(romTotal)}`
-      : "Not granted";
+      : hardware?.embedded
+        ? "Blocked in preview"
+        : "Grant storage";
   const romDetail = indexed
     ? `${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${scanning ? " · scanning" : ""}${rootName ? ` · ${rootName}` : ""}`
-    : "Grant Internal storage or the SD card to count real files";
+    : romTotal
+      ? "Browser storage ceiling — grant Internal storage to count real files"
+      : "Grant Internal storage or the SD card to count real files";
 
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
@@ -324,7 +331,9 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
         detail={
           deviceCount
             ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${rootName ? ` · ${rootName}` : ""}`
-            : "Tap Connect and choose the top Internal storage or SD card folder"
+            : hardware?.embedded
+              ? "The in-app preview cannot see phone storage. Open in Chrome, then grant the storage root."
+              : "Tap Grant storage and choose the top Internal storage or SD card folder"
         }
         pct={diskPct}
       />
@@ -463,14 +472,14 @@ export function DevicePane() {
       <StorageMeters />
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => dirRef.current?.click()}>
-          Internal storage
+        <Button size="sm" onClick={() => void useFiles.getState().connectDevice()}>
+          Grant storage
+        </Button>
+        <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().connectDevice()}>
+          Add SD card
         </Button>
         <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
-          SD card
-        </Button>
-        <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
-          Entire folder
+          Folder picker
         </Button>
         <Button size="sm" variant="secondary" onClick={() => filesRef.current?.click()}>
           <Images className="size-3.5" />
@@ -502,9 +511,10 @@ export function DevicePane() {
         ))}
       </div>
       <p className="mt-3 max-w-xl text-xs text-muted">
-        Tap Internal storage or SD card, then choose the top folder with that name — not a single album.
-        The phone then hands over every file inside it. Hidden files stay visible here. RAM is the memory
-        figure this browser is allowed to report.
+        Tap Grant storage, then in the system picker open Internal storage or the SD card and select the
+        top folder. Every file inside that grant is indexed, including names that start with a dot. Android
+        still hides other apps’ private data. RAM is only the figure Chrome is allowed to report — Safari
+        does not expose it. This preview window cannot see the phone; use Chrome itself.
       </p>
       {volumes.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2">

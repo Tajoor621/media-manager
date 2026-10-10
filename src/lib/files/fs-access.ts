@@ -73,13 +73,13 @@ export type PickResult = {
 
 export async function pickDirectory(startIn?: WellKnownDir): Promise<PickResult> {
   const show = picker();
-  if (!show) return { handle: null, reason: "unsupported" };
-  const tryPick = async (mode: "read" | "readwrite"): Promise<PickResult> => {
+  if (!show || !fsaUsable()) return { handle: null, reason: "unsupported" };
+  const tryPick = async (mode: "read" | "readwrite", start?: WellKnownDir): Promise<PickResult> => {
     try {
       const handle = await show({
-        id: startIn ?? "media-manager-device",
+        id: start ?? "media-manager-device",
         mode,
-        startIn,
+        startIn: start,
       });
       return { handle };
     } catch (err) {
@@ -88,8 +88,12 @@ export async function pickDirectory(startIn?: WellKnownDir): Promise<PickResult>
       return { handle: null, reason: "blocked" };
     }
   };
-  const rw = await tryPick("readwrite");
+  const rw = await tryPick("readwrite", startIn);
   if (rw.handle || rw.reason === "cancelled") return rw;
+  const read = await tryPick("read", startIn);
+  if (read.handle || read.reason === "cancelled" || !startIn) return read;
+  const again = await tryPick("readwrite");
+  if (again.handle || again.reason === "cancelled") return again;
   return tryPick("read");
 }
 
@@ -105,6 +109,7 @@ export async function scanDirectory(
   let bytes = 0;
   let ticks = 0;
   const index: DeviceEntry[] = [];
+  const sized: { row: DeviceEntry; handle: FileSystemFileHandle }[] = [];
   const INDEX_CAP = 80000;
 
   const walk = async (dir: FileSystemDirectoryHandle, prefix: string) => {
@@ -127,28 +132,54 @@ export async function scanDirectory(
         }
       } else {
         files += 1;
-        let size = 0;
-        let mime = mimeFromName(name);
-        let lastModified = 0;
-        try {
-          const file = await (entry as FileSystemFileHandle).getFile();
-          size = file.size;
-          mime = file.type || mime;
-          lastModified = file.lastModified;
-          bytes += size;
-        } catch {
-          /* placeholder / denied */
-        }
         if (index.length < INDEX_CAP) {
-          index.push({ name, path, kind: "file", size, mime, lastModified });
+          const row: DeviceEntry = {
+            name,
+            path,
+            kind: "file",
+            size: 0,
+            mime: mimeFromName(name),
+            lastModified: 0,
+          };
+          index.push(row);
+          sized.push({ row, handle: entry as FileSystemFileHandle });
         }
       }
       ticks += 1;
-      if (ticks % 40 === 0) onProgress?.({ files, folders, bytes, index });
+      if (ticks % 80 === 0) {
+        onProgress?.({ files, folders, bytes, index });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
     }
   };
 
   await walk(handle, "");
+  onProgress?.({ files, folders, bytes, index });
+
+  const workers = Math.min(8, sized.length);
+  let cursor = 0;
+  const measure = async () => {
+    while (cursor < sized.length) {
+      if (signal?.cancelled) return;
+      const job = sized[cursor];
+      cursor += 1;
+      try {
+        const file = await job.handle.getFile();
+        job.row.size = file.size;
+        job.row.mime = file.type || job.row.mime;
+        job.row.lastModified = file.lastModified;
+        bytes += file.size;
+      } catch {
+        /* counted even if the OS hides the bytes */
+      }
+      if (cursor % 40 === 0) {
+        onProgress?.({ files, folders, bytes, index });
+        await new Promise((resolve) => setTimeout(resolve, 0));
+      }
+    }
+  };
+  if (workers) await Promise.all(Array.from({ length: workers }, () => measure()));
+
   const stats = { files, folders, bytes, index };
   onProgress?.(stats);
   return stats;
@@ -174,12 +205,31 @@ export async function readDevicePath(
 
 async function iterateDir(dir: DirHandle): Promise<[string, FileSystemHandle][]> {
   const out: [string, FileSystemHandle][] = [];
-  if (typeof dir.entries === "function") {
-    for await (const pair of dir.entries()) out.push(pair);
-    return out;
+  const push = (item: [string, FileSystemHandle] | FileSystemHandle) => {
+    if (Array.isArray(item)) out.push(item);
+    else if (item && typeof item === "object" && "name" in item) out.push([item.name, item]);
+  };
+  try {
+    if (typeof dir.entries === "function") {
+      for await (const pair of dir.entries()) push(pair);
+      if (out.length) return out;
+    }
+  } catch {
+    /* fall through */
+  }
+  try {
+    const iterable = dir as unknown as AsyncIterable<[string, FileSystemHandle] | FileSystemHandle>;
+    for await (const item of iterable) push(item);
+    if (out.length) return out;
+  } catch {
+    /* permission or empty */
   }
   if (typeof dir.values === "function") {
-    for await (const entry of dir.values()) out.push([entry.name, entry]);
+    try {
+      for await (const entry of dir.values()) push(entry);
+    } catch {
+      /* ignore */
+    }
   }
   return out;
 }
@@ -194,34 +244,22 @@ export async function listDirectory(handle: FileSystemDirectoryHandle): Promise<
     return [];
   }
   for (const [name, entry] of pairs) {
-    try {
-      if (entry.kind === "directory") {
-        out.push({
-          name,
-          path: name,
-          kind: "folder",
-          size: 0,
-          mime: "inode/directory",
-          lastModified: 0,
-        });
-      } else {
-        const file = await (entry as FileSystemFileHandle).getFile();
-        out.push({
-          name,
-          path: name,
-          kind: "file",
-          size: file.size,
-          mime: file.type || mimeFromName(name),
-          lastModified: file.lastModified,
-        });
-      }
-    } catch {
+    if (entry.kind === "directory") {
       out.push({
         name,
         path: name,
-        kind: entry.kind === "directory" ? "folder" : "file",
+        kind: "folder",
         size: 0,
-        mime: entry.kind === "directory" ? "inode/directory" : mimeFromName(name),
+        mime: "inode/directory",
+        lastModified: 0,
+      });
+    } else {
+      out.push({
+        name,
+        path: name,
+        kind: "file",
+        size: 0,
+        mime: mimeFromName(name),
         lastModified: 0,
       });
     }
