@@ -1,0 +1,13 @@
+{
+  "product": "Media Manager",
+  "code": "621",
+  "tagline": "Access to each file of mobile",
+  "modules": [
+    "browser",
+    "viewers",
+    "cloud",
+    "nearby",
+    "pwa"
+  ],
+  "offline": true
+}

@@ -1,0 +1,1 @@
+var e=`/media-manager/assets/sql-wasm-DfANybxk.wasm`;export{e as default};
