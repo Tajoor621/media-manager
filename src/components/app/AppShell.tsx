@@ -42,7 +42,6 @@ import { Button, IconButton, Input, Modal } from "@/components/ui";
 import { FilePane, ConfirmBar } from "./FilePane";
 import { MiniPlayer, ViewerHost } from "./Viewers";
 import { CloudPane, CommandPalette, DevicePane, DevicePickers, NearbyPanel, SettingsPanel, StorageMeters } from "./Panels";
-import { requestDeviceFolderInput } from "@/lib/files/fs-access";
 import { BrandMark, BrandWordmark } from "./Brand";
 import { cn } from "@/lib/utils";
 
@@ -715,7 +714,8 @@ function MobileNav() {
             else if (it.id === "device") {
               const state = useFiles.getState();
               state.goPlace("device");
-              if (state.deviceStatus !== "ready") requestDeviceFolderInput();
+              if (state.deviceStatus === "need-gesture") void state.resumeDeviceAccess();
+              else if (state.deviceStatus !== "ready") void state.connectDevice();
             } else useFiles.getState().goPlace(it.id);
           }}
         >

@@ -68,7 +68,7 @@ async function rememberVolumes(handles: FileSystemDirectoryHandle[]) {
 
 async function scanSavedVolumes(
   handles: FileSystemDirectoryHandle[],
-  set: (partial: Partial<Store>) => void,
+  set: (partial: Partial<Store> | ((state: Store) => Partial<Store>)) => void,
 ) {
   const unique = await rememberVolumes(handles);
   const active = unique[0];
@@ -124,7 +124,10 @@ async function scanSavedVolumes(
     set({ deviceFileCount: files, deviceFolders: folders, deviceBytes: bytes, deviceIndex: index, deviceVolumes: snaps });
   }
   if (scanGen === gen) {
-    set({ deviceScanning: false });
+    set((state) => ({
+      deviceScanning: false,
+      nodes: mergeDeviceNodes(state.nodes, index),
+    }));
     void idb.setMeta("deviceSnapshot", {
       name: unique.length > 1 ? `${unique.length} storage volumes` : active.name || "Device",
       files,
@@ -132,6 +135,47 @@ async function scanSavedVolumes(
       bytes,
     });
   }
+}
+
+function persistable(nodes: FileNode[]): FileNode[] {
+  return nodes.filter((n) => !n.id.startsWith("device:"));
+}
+
+function parentForDeviceFile(mime: string, name: string): string {
+  const kind = viewerKind(mime, name);
+  if (kind === "image") return FOLDER_IDS.photos;
+  if (kind === "video") return FOLDER_IDS.videos;
+  if (kind === "audio") return FOLDER_IDS.music;
+  if (kind === "pdf" || kind === "text") return FOLDER_IDS.documents;
+  if (kind === "archive" || kind === "sqlite") return FOLDER_IDS.archives;
+  return FOLDER_IDS.downloads;
+}
+
+function mergeDeviceNodes(prev: Record<string, FileNode>, index: DeviceEntry[]): Record<string, FileNode> {
+  const next: Record<string, FileNode> = {};
+  for (const [id, node] of Object.entries(prev)) {
+    if (!id.startsWith("device:")) next[id] = node;
+  }
+  const now = Date.now();
+  for (const entry of index) {
+    if (entry.kind !== "file" || !entry.path) continue;
+    const id = `device:${entry.path}`;
+    const mime = entry.mime || mimeFromName(entry.name);
+    next[id] = {
+      id,
+      parentId: parentForDeviceFile(mime, entry.name),
+      name: entry.name,
+      kind: "file",
+      mime,
+      size: entry.size,
+      createdAt: entry.lastModified || now,
+      updatedAt: entry.lastModified || now,
+      favorite: false,
+      bookmark: false,
+      source: `device:${entry.path}`,
+    };
+  }
+  return next;
 }
 
 let nameResolver: ((value: string | null) => void) | null = null;
@@ -511,6 +555,7 @@ export const useFiles = create<Store>((set, get) => ({
         nodes = await seedLibrary();
       } else {
         nodes = await idb.getAllNodes();
+        nodes = nodes.filter((n) => !n.id.startsWith("device:"));
         if (!nodes.find((n) => n.id === ROOT_ID)) {
           const skeleton = folderTree();
           set({
@@ -848,7 +893,7 @@ export const useFiles = create<Store>((set, get) => ({
       const n = nodes[id];
       if (n) await cloneNode(n, parentId, nodes, now);
     }
-    await idb.putNodes(Object.values(nodes));
+    await idb.putNodes(persistable(Object.values(nodes)));
     set({ nodes });
     await get().refreshQuota();
     toast.success("Pasted");
@@ -998,6 +1043,12 @@ export const useFiles = create<Store>((set, get) => ({
       return blob;
     }
     const node = get().nodes[id];
+    if (node?.source?.startsWith("device:")) {
+      const file = await resolveDeviceFile(get, node.source.slice("device:".length));
+      if (!file) return null;
+      blobCache.set(id, file);
+      return file;
+    }
     if (node?.source) {
       try {
         const res = await fetch(node.source);
@@ -1030,7 +1081,7 @@ export const useFiles = create<Store>((set, get) => ({
     if (!node) return;
     const nodes = { ...get().nodes };
     await cloneNode(node, node.parentId, nodes, Date.now());
-    await idb.putNodes(Object.values(nodes));
+    await idb.putNodes(persistable(Object.values(nodes)));
     set({ nodes });
   },
   moveTo: async (ids, parentId) => {
@@ -1151,6 +1202,7 @@ export const useFiles = create<Store>((set, get) => ({
         { name: mount.rootName, files: mount.fileCount, folders: 0, bytes: mount.totalBytes },
       ],
       deviceScanning: false,
+      nodes: mergeDeviceNodes(get().nodes, append ? [...get().deviceIndex, ...indexed].slice(0, 80000) : indexed),
     });
     get().goPlace("device");
     toast.success(`${mount.fileCount.toLocaleString()} files from ${mount.rootName}`);
@@ -1287,7 +1339,9 @@ export const useFiles = create<Store>((set, get) => ({
       const q = search.trim().toLowerCase();
       list = list.filter((n) => n.name.toLowerCase().includes(q));
     }
-    if (!settings.showHidden) list = list.filter((n) => !n.name.startsWith("."));
+    if (!settings.showHidden) {
+      list = list.filter((n) => n.id.startsWith("device:") || !n.name.startsWith("."));
+    }
     const dir = settings.sortDir === "asc" ? 1 : -1;
     return list.sort((a, b) => {
       if (a.kind !== b.kind) return a.kind === "folder" ? -1 : 1;

@@ -15,6 +15,7 @@ import { FileGlyph } from "./file-icon";
 import { BrandMark, BrandWordmark } from "./Brand";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
+import { StorageMeters } from "./Panels";
 
 export function FilePane() {
   const nodes = useFiles(useShallow((s) => s.visibleNodes()));
@@ -184,6 +185,28 @@ function HomeDashboard() {
 
   return (
     <section className="mb-6">
+      <StorageMeters />
+      <div className="mt-3 mb-6 flex flex-wrap gap-2">
+        <Button
+          size="sm"
+          onClick={(e) => {
+            e.stopPropagation();
+            void useFiles.getState().connectDevice();
+          }}
+        >
+          Connect device storage
+        </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={(e) => {
+            e.stopPropagation();
+            useFiles.getState().goPlace("device");
+          }}
+        >
+          Open RAM & ROM
+        </Button>
+      </div>
       <div className="mb-4 flex items-end justify-between gap-3">
         <div>
           <h2 className="font-display text-xs text-gold">Collections</h2>

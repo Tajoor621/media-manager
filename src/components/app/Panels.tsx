@@ -302,17 +302,13 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
 
   const indexed = deviceBytes > 0 || deviceCount > 0;
   const romLabel = indexed
-    ? `${formatBytes(deviceBytes)} on device`
+    ? `${formatBytes(deviceBytes)} indexed`
     : romTotal
       ? `${formatBytes(romUsed)} / ${formatBytes(romTotal)}`
-      : hardware?.embedded
-        ? "Blocked in preview"
-        : "Grant storage";
+      : "Grant a folder";
   const romDetail = indexed
-    ? `${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${scanning ? " · scanning" : ""}${rootName ? ` · ${rootName}` : ""}`
-    : romTotal
-      ? "Browser storage ceiling — grant Internal storage to count real files"
-      : "Grant Internal storage or the SD card to count real files";
+    ? `${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${scanning ? " · still reading" : ""}${rootName ? ` · ${rootName}` : ""}`
+    : "Pick Internal storage or the SD card. The browser only counts files you grant.";
 
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
@@ -395,17 +391,6 @@ export function DevicePane() {
     el.multiple = true;
   }, []);
 
-  useEffect(() => {
-    const onFolder = () => dirRef.current?.click();
-    const onFiles = () => filesRef.current?.click();
-    window.addEventListener(DEVICE_PICK_EVENT, onFolder);
-    window.addEventListener(DEVICE_FILES_EVENT, onFiles);
-    return () => {
-      window.removeEventListener(DEVICE_PICK_EVENT, onFolder);
-      window.removeEventListener(DEVICE_FILES_EVENT, onFiles);
-    };
-  }, []);
-
   const takeFiles = (list: FileList | null) => {
     const files = list ? [...list] : [];
     if (!files.length) return;
@@ -438,7 +423,7 @@ export function DevicePane() {
       <input
         ref={dirRef}
         type="file"
-        className="hidden"
+        className="pointer-events-none fixed top-0 left-0 h-px w-px opacity-0"
         multiple
         onChange={(e) => {
           takeFiles(e.target.files);
@@ -448,7 +433,7 @@ export function DevicePane() {
       <input
         ref={filesRef}
         type="file"
-        className="hidden"
+        className="pointer-events-none fixed top-0 left-0 h-px w-px opacity-0"
         multiple
         onChange={(e) => {
           const files = e.target.files ? [...e.target.files] : [];
@@ -459,7 +444,7 @@ export function DevicePane() {
       <input
         ref={cameraRef}
         type="file"
-        className="hidden"
+        className="pointer-events-none fixed top-0 left-0 h-px w-px opacity-0"
         accept="image/*,video/*,audio/*"
         capture="environment"
         onChange={(e) => {
@@ -611,7 +596,7 @@ export function DevicePane() {
             Pick Internal storage, Download, DCIM, or the SD card. This app then walks every file in that
             tree for preview, search, RAM/ROM meters, and import.
           </p>
-          <Button onClick={() => dirRef.current?.click()}>
+          <Button onClick={() => void useFiles.getState().connectDevice()}>
             <FolderOpen className="size-4" />
             Connect device storage
           </Button>
@@ -984,9 +969,15 @@ export function DevicePickers() {
   return (
     <>
       <input
-        ref={dirRef}
+        ref={(el) => {
+          dirRef.current = el;
+          if (!el) return;
+          el.setAttribute("webkitdirectory", "");
+          el.setAttribute("directory", "");
+          el.multiple = true;
+        }}
         type="file"
-        className="hidden"
+        className="pointer-events-none fixed top-0 left-0 h-px w-px opacity-0"
         multiple
         onChange={(e) => {
           const files = e.target.files ? [...e.target.files] : [];
@@ -997,7 +988,7 @@ export function DevicePickers() {
       <input
         ref={filesRef}
         type="file"
-        className="hidden"
+        className="pointer-events-none fixed top-0 left-0 h-px w-px opacity-0"
         multiple
         onChange={(e) => {
           const files = e.target.files ? [...e.target.files] : [];
