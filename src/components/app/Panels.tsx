@@ -20,7 +20,8 @@ import {
 import { useP2PRoom } from "@/lib/multiplayer/use-p2p-room";
 import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
-import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT } from "@/lib/files/fs-access";
+import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, countFilesUnder, getDeviceBagFile, prefersDirectoryInput } from "@/lib/files/fs-access";
+import type { DeviceEntry } from "@/lib/files/types";
 
 export function SettingsPanel() {
   const open = useFiles((s) => s.settingsOpen);
@@ -186,7 +187,7 @@ export function SettingsPanel() {
             Show hidden files
           </label>
           <Button size="sm" variant="danger" onClick={() => void useFiles.getState().resetLibrary()}>
-            Reset sample library
+            Clear library
           </Button>
         </section>
         <section className="overflow-hidden rounded-xl bg-ink">
@@ -304,11 +305,13 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
   const romLabel = indexed
     ? `${formatBytes(deviceBytes)} indexed`
     : romTotal
-      ? `${formatBytes(romUsed)} / ${formatBytes(romTotal)}`
-      : "Grant a folder";
+      ? formatBytes(romTotal)
+      : "Not counted";
   const romDetail = indexed
     ? `${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${scanning ? " · still reading" : ""}${rootName ? ` · ${rootName}` : ""}`
-    : "Pick Internal storage or the SD card. The browser only counts files you grant.";
+    : romTotal
+      ? `Chrome can use up to ${formatBytes(romTotal)}. Grant Internal storage to count your files.`
+      : "Grant Internal storage or the SD card to count files on this phone.";
 
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
@@ -365,6 +368,71 @@ function MeterCard({
   );
 }
 
+function fileStamp(ts: number) {
+  if (!ts) return "";
+  return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+}
+
+function DeviceRow({ entry }: { entry: DeviceEntry }) {
+  const [thumb, setThumb] = useState<string | null>(null);
+  const [dims, setDims] = useState("");
+  const kind = viewerKind(entry.mime, entry.name);
+  const visual = entry.kind === "file" && (kind === "image" || kind === "video");
+
+  useEffect(() => {
+    if (!visual || !entry.path) return;
+    const file = getDeviceBagFile(entry.path);
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setThumb(url);
+    if (kind === "image") {
+      const img = new Image();
+      img.onload = () => {
+        if (img.naturalWidth) setDims(`${img.naturalWidth}×${img.naturalHeight}`);
+      };
+      img.src = url;
+    }
+    return () => URL.revokeObjectURL(url);
+  }, [entry.path, visual, kind]);
+
+  const open = () => {
+    if (entry.kind === "folder") {
+      void useFiles.getState().enterDeviceFolder(entry.path || entry.name);
+      return;
+    }
+    void useFiles.getState().openDeviceFile(entry.path || entry.name);
+  };
+
+  return (
+    <li className="border-b border-border last:border-b-0">
+      <button type="button" className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-elevated" onClick={open}>
+        {thumb ? (
+          kind === "video" ? (
+            <video src={thumb} muted className="size-14 shrink-0 rounded object-cover" />
+          ) : (
+            <img src={thumb} alt="" className="size-14 shrink-0 rounded object-cover" />
+          )
+        ) : (
+          <span className="grid size-14 shrink-0 place-items-center rounded bg-background">
+            <FileGlyph kind={kind} folder={entry.kind === "folder"} />
+          </span>
+        )}
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm text-foreground">{entry.name}</span>
+          <span className="mt-0.5 block truncate text-xs text-subtle">
+            {entry.kind === "folder"
+              ? `${countFilesUnder(entry.path).toLocaleString()} files`
+              : [fileStamp(entry.lastModified), dims].filter(Boolean).join(" · ") || entry.mime}
+          </span>
+        </span>
+        <span className="shrink-0 text-xs text-subtle tabular-nums">
+          {entry.kind === "file" ? formatBytes(entry.size) : ""}
+        </span>
+      </button>
+    </li>
+  );
+}
+
 export function DevicePane() {
   const status = useFiles((s) => s.deviceStatus);
   const stack = useFiles((s) => s.deviceStack);
@@ -397,14 +465,19 @@ export function DevicePane() {
     void useFiles.getState().mountDeviceFiles(files);
   };
 
-  const visible = entries;
+  const grantFolder = () => {
+    if (prefersDirectoryInput()) {
+      dirRef.current?.click();
+      return;
+    }
+    void useFiles.getState().connectDevice();
+  };
   const qn = q.trim().toLowerCase();
   const filtered = qn
-    ? (index.length
-        ? index.filter((e) => e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn))
-        : visible.filter((e) => e.name.toLowerCase().includes(qn))
-      ).slice(0, 2000)
-    : visible;
+    ? (index.length ? index : entries).filter(
+        (e) => e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn),
+      )
+    : entries;
   const crumb = mode === "tree" ? [rootName, ...path.split("/").filter(Boolean)] : stack.map((s) => s.name);
   const ready = status === "ready";
 
@@ -457,10 +530,10 @@ export function DevicePane() {
       <StorageMeters />
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => void useFiles.getState().connectDevice()}>
+        <Button size="sm" onClick={grantFolder}>
           Grant storage
         </Button>
-        <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().connectDevice()}>
+        <Button size="sm" variant="secondary" onClick={grantFolder}>
           Add SD card
         </Button>
         <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
@@ -489,17 +562,16 @@ export function DevicePane() {
             key={id}
             size="sm"
             variant="ghost"
-            onClick={() => void useFiles.getState().connectDevice(id)}
+            onClick={grantFolder}
           >
             {label}
           </Button>
         ))}
       </div>
       <p className="mt-3 max-w-xl text-xs text-muted">
-        Tap Grant storage, then in the system picker open Internal storage or the SD card and select the
-        top folder. Every file inside that grant is indexed, including names that start with a dot. Android
-        still hides other apps’ private data. RAM is only the figure Chrome is allowed to report — Safari
-        does not expose it. This preview window cannot see the phone; use Chrome itself.
+        Tap Grant storage and choose Internal storage, DCIM, or the SD card. Android shows one folder
+        sheet — that is the only permission a website is allowed. After that, folders open in place and
+        photos, video, and documents open when you tap them.
       </p>
       {volumes.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2">
@@ -540,40 +612,14 @@ export function DevicePane() {
           </div>
           <ul className="mt-3 overflow-hidden rounded-lg hairline">
             {filtered.length === 0 ? (
-              <li className="px-3 py-8 text-center text-sm text-muted">No files in this folder.</li>
+              <li className="px-3 py-8 text-center text-sm text-muted">This folder is empty.</li>
             ) : (
-              filtered.map((e) => (
-                <li key={e.path || e.name} className="flex items-center gap-1 border-b border-border last:border-b-0">
-                  <button
-                    type="button"
-                    className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-3 text-left hover:bg-elevated"
-                    onClick={() => {
-                      if (e.kind === "folder") void useFiles.getState().enterDeviceFolder(e.name);
-                      else void useFiles.getState().openDeviceFile(qn ? e.path || e.name : e.name);
-                    }}
-                  >
-                    <span className="flex min-w-0 items-center gap-3">
-                      <FileGlyph kind={viewerKind(e.mime, e.name)} folder={e.kind === "folder"} />
-                      <span className="truncate">{e.name}</span>
-                    </span>
-                    <span className="text-xs text-subtle tabular-nums">
-                      {e.kind === "folder" ? "Folder" : formatBytes(e.size)}
-                    </span>
-                  </button>
-                  {e.kind === "file" && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="mr-1 shrink-0"
-                      onClick={() => void useFiles.getState().importDeviceFile(qn ? e.path || e.name : e.name)}
-                    >
-                      Import
-                    </Button>
-                  )}
-                </li>
-              ))
+              filtered.slice(0, 400).map((e) => <DeviceRow key={e.path || e.name} entry={e} />)
             )}
           </ul>
+          {filtered.length > 400 && (
+            <p className="mt-2 text-xs text-muted">Showing the first 400. Search to narrow this folder.</p>
+          )}
         </>
       ) : status === "need-gesture" ? (
         <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">
@@ -596,9 +642,9 @@ export function DevicePane() {
             Pick Internal storage, Download, DCIM, or the SD card. This app then walks every file in that
             tree for preview, search, RAM/ROM meters, and import.
           </p>
-          <Button onClick={() => void useFiles.getState().connectDevice()}>
+          <Button onClick={grantFolder}>
             <FolderOpen className="size-4" />
-            Connect device storage
+            Open phone storage
           </Button>
         </div>
       )}

@@ -482,6 +482,15 @@ export function allTreeFiles(): DeviceEntry[] {
   return treeFiles;
 }
 
+export function countFilesUnder(path: string): number {
+  const prefix = path ? `${path}/` : "";
+  let n = 0;
+  for (const file of treeFiles) {
+    if (!prefix || file.path.startsWith(prefix)) n += 1;
+  }
+  return n;
+}
+
 export function treeParent(path: string): string {
   return parentPath(path);
 }

@@ -711,12 +711,8 @@ function MobileNav() {
           )}
           onClick={() => {
             if (it.id === "more") useFiles.getState().setSidebarOpen(true);
-            else if (it.id === "device") {
-              const state = useFiles.getState();
-              state.goPlace("device");
-              if (state.deviceStatus === "need-gesture") void state.resumeDeviceAccess();
-              else if (state.deviceStatus !== "ready") void state.connectDevice();
-            } else useFiles.getState().goPlace(it.id);
+            else if (it.id === "device") useFiles.getState().goPlace("device");
+            else useFiles.getState().goPlace(it.id);
           }}
         >
           <it.icon className="size-5" />

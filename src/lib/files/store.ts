@@ -26,7 +26,6 @@ import {
   ensurePermission,
   filesUnderPath,
   getDeviceBagFile,
-  hasFileSystemAccess,
   listDirectory,
   listTreePath,
   mountFileList,
@@ -611,7 +610,6 @@ export const useFiles = create<Store>((set, get) => ({
       if (granted.length) void scanSavedVolumes(granted, set);
       await get().refreshQuota();
       await get().refreshHardware();
-      void requestPersistentStorage();
     } catch (e) {
       set({ error: e instanceof Error ? e.message : "Failed to open library", ready: false });
     }
@@ -1120,9 +1118,14 @@ export const useFiles = create<Store>((set, get) => ({
   },
   connectDevice: async (startIn) => {
     get().goPlace("device");
-    if (fsaUsable()) {
-      const picked = await pickDirectory(startIn);
-      if (picked.handle) {
+    // Android Chrome rejects showDirectoryPicker with "permission denied" and never
+    // shows a picker. The folder input must be opened in the same tap.
+    if (prefersDirectoryInput() || !fsaUsable()) {
+      requestDeviceFolderInput();
+      return;
+    }
+    const picked = await pickDirectory(startIn);
+    if (picked.handle) {
         const handle = picked.handle;
         const handles = [...volumeHandles.filter((h) => h.name !== handle.name), handle];
         toast.success(`Indexing ${handle.name || "storage"}…`);
@@ -1141,17 +1144,9 @@ export const useFiles = create<Store>((set, get) => ({
           toast.error("Could not read that folder. Pick the storage root again and allow access.");
         }
         return;
-      }
-      if (picked.reason === "cancelled") return;
     }
-    if (prefersDirectoryInput() || hasFileSystemAccess() || typeof document !== "undefined") {
-      requestDeviceFolderInput();
-      if (!fsaUsable()) {
-        toast.message("Choose the top Internal storage or SD card folder, not a single photo.");
-      }
-      return;
-    }
-    toast.error("Open this app in Chrome to grant device storage.");
+    if (picked.reason === "cancelled") return;
+    requestDeviceFolderInput();
   },
   resumeDeviceAccess: async () => {
     const pending = volumeHandles;
@@ -1216,7 +1211,7 @@ export const useFiles = create<Store>((set, get) => ({
   },
   enterDeviceFolder: async (name) => {
     if (get().deviceMode === "tree") {
-      const next = get().devicePath ? `${get().devicePath}/${name}` : name;
+      const next = name.includes("/") ? name : get().devicePath ? `${get().devicePath}/${name}` : name;
       set({ devicePath: next, deviceEntries: listTreePath(next) });
       return;
     }
@@ -1253,29 +1248,30 @@ export const useFiles = create<Store>((set, get) => ({
     if (file) await get().ingestFiles([file], FOLDER_IDS.downloads);
   },
   openDeviceFile: async (name) => {
-    const file = await resolveDeviceFile(get, name);
-    if (!file) {
-      toast.error("Reconnect this folder to open the file");
-      return;
+    const path = name.includes("/") ? name : get().devicePath ? `${get().devicePath}/${name}` : name;
+    const id = `device:${path}`;
+    if (!get().nodes[id]) {
+      const file = await resolveDeviceFile(get, path);
+      if (!file) {
+        toast.error("Grant the folder again, then tap the file.");
+        return;
+      }
+      const mime = file.type || mimeFromName(file.name);
+      const node: FileNode = {
+        id,
+        parentId: parentForDeviceFile(mime, file.name),
+        name: file.name,
+        kind: "file",
+        mime,
+        size: file.size,
+        createdAt: file.lastModified || Date.now(),
+        updatedAt: file.lastModified || Date.now(),
+        favorite: false,
+        bookmark: false,
+        source: `device:${path}`,
+      };
+      set({ nodes: { ...get().nodes, [id]: node } });
     }
-    const id = uid("dev");
-    const buf = await file.arrayBuffer();
-    const node: FileNode = {
-      id,
-      parentId: FOLDER_IDS.downloads,
-      name: file.name,
-      kind: "file",
-      mime: file.type || mimeFromName(file.name),
-      size: file.size,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-      favorite: false,
-      bookmark: false,
-    };
-    await idb.putBlob(id, buf, node.mime);
-    await idb.putNode(node);
-    blobCache.set(id, new Blob([buf], { type: node.mime }));
-    set({ nodes: { ...get().nodes, [id]: node } });
     get().openViewer(id);
   },
   importDeviceFolder: async () => {
@@ -1401,12 +1397,12 @@ export const useFiles = create<Store>((set, get) => ({
     const nodes = await seedLibrary();
     set({
       nodes: Object.fromEntries(nodes.map((n) => [n.id, n])),
-      recents: ["file-logo", "file-orbit", "file-welcome", "file-dunes"],
+      recents: [],
       viewerId: null,
       selectedIds: [],
     });
     await get().refreshQuota();
-    toast.success("Sample library restored");
+    toast.success("Library cleared");
   },
   shareNodes: async (ids) => {
     const nodes = (ids ?? get().selectedIds)
