@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Camera, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Radio, Search } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Radio, Search } from "lucide-react";
 import { useFiles } from "@/lib/files/store";
 import { useShallow } from "zustand/react/shallow";
 import { formatBytes } from "@/lib/files/format";
@@ -20,7 +20,7 @@ import {
 import { useP2PRoom } from "@/lib/multiplayer/use-p2p-room";
 import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
-import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, countFilesUnder, getDeviceBagFile, prefersDirectoryInput } from "@/lib/files/fs-access";
+import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, getDeviceBagFile, listTreePath, prefersDirectoryInput } from "@/lib/files/fs-access";
 import type { DeviceEntry } from "@/lib/files/types";
 
 export function SettingsPanel() {
@@ -373,7 +373,19 @@ function fileStamp(ts: number) {
   return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
 }
 
-function DeviceRow({ entry }: { entry: DeviceEntry }) {
+function DeviceRow({
+  entry,
+  depth,
+  open,
+  selected,
+  onFolder,
+}: {
+  entry: DeviceEntry;
+  depth: number;
+  open: boolean;
+  selected: boolean;
+  onFolder: () => void;
+}) {
   const [thumb, setThumb] = useState<string | null>(null);
   const [dims, setDims] = useState("");
   const kind = viewerKind(entry.mime, entry.name);
@@ -395,41 +407,137 @@ function DeviceRow({ entry }: { entry: DeviceEntry }) {
     return () => URL.revokeObjectURL(url);
   }, [entry.path, visual, kind]);
 
-  const open = () => {
-    if (entry.kind === "folder") {
-      void useFiles.getState().enterDeviceFolder(entry.path || entry.name);
-      return;
-    }
+  const openFile = () => {
     void useFiles.getState().openDeviceFile(entry.path || entry.name);
   };
 
+  const kids = entry.kind === "folder" ? listTreePath(entry.path) : [];
+  const childFiles = kids.filter((k) => k.kind === "file").length;
+  const childFolders = kids.filter((k) => k.kind === "folder").length;
+
   return (
-    <li className="border-b border-border last:border-b-0">
-      <button type="button" className="flex w-full items-center gap-3 px-3 py-2 text-left hover:bg-elevated" onClick={open}>
-        {thumb ? (
-          kind === "video" ? (
-            <video src={thumb} muted className="size-14 shrink-0 rounded object-cover" />
-          ) : (
-            <img src={thumb} alt="" className="size-14 shrink-0 rounded object-cover" />
-          )
+    <button
+      type="button"
+      className={cn(
+        "flex w-full items-center gap-2 py-2 pr-3 text-left",
+        selected ? "bg-gold/10" : "hover:bg-elevated",
+      )}
+      style={{ paddingLeft: 8 + depth * 14 }}
+      onClick={entry.kind === "folder" ? onFolder : openFile}
+    >
+      {entry.kind === "folder" ? (
+        open ? <ChevronDown className="size-4 shrink-0 text-muted" /> : <ChevronRight className="size-4 shrink-0 text-muted" />
+      ) : (
+        <span className="size-4 shrink-0" />
+      )}
+      {thumb ? (
+        kind === "video" ? (
+          <video src={thumb} muted className="size-12 shrink-0 rounded object-cover" />
         ) : (
-          <span className="grid size-14 shrink-0 place-items-center rounded bg-background">
-            <FileGlyph kind={kind} folder={entry.kind === "folder"} />
-          </span>
-        )}
-        <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm text-foreground">{entry.name}</span>
-          <span className="mt-0.5 block truncate text-xs text-subtle">
-            {entry.kind === "folder"
-              ? `${countFilesUnder(entry.path).toLocaleString()} files`
-              : [fileStamp(entry.lastModified), dims].filter(Boolean).join(" · ") || entry.mime}
-          </span>
+          <img src={thumb} alt="" className="size-12 shrink-0 rounded object-cover" />
+        )
+      ) : (
+        <span className="grid size-12 shrink-0 place-items-center rounded bg-background">
+          <FileGlyph kind={kind} folder={entry.kind === "folder"} />
         </span>
-        <span className="shrink-0 text-xs text-subtle tabular-nums">
-          {entry.kind === "file" ? formatBytes(entry.size) : ""}
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-sm text-foreground">{entry.name}</span>
+        <span className="mt-0.5 block truncate text-xs text-subtle">
+          {entry.kind === "folder"
+            ? `${childFiles.toLocaleString()} files${childFolders ? ` · ${childFolders.toLocaleString()} folders` : ""}`
+            : [fileStamp(entry.lastModified), dims].filter(Boolean).join(" · ") || entry.mime}
         </span>
-      </button>
-    </li>
+      </span>
+      <span className="shrink-0 text-xs text-subtle tabular-nums">
+        {entry.kind === "file" ? formatBytes(entry.size) : ""}
+      </span>
+    </button>
+  );
+}
+
+function DeviceTree({
+  parent,
+  depth,
+  openPaths,
+  selected,
+  onToggle,
+}: {
+  parent: string;
+  depth: number;
+  openPaths: Set<string>;
+  selected: string;
+  onToggle: (path: string) => void;
+}) {
+  const [cap, setCap] = useState(80);
+  const entries = listTreePath(parent);
+  const shown = entries.slice(0, cap);
+  if (!entries.length && depth === 0) {
+    return <p className="px-3 py-8 text-center text-sm text-muted">This folder is empty.</p>;
+  }
+  return (
+    <ul>
+      {shown.map((entry) => {
+        const expanded = entry.kind === "folder" && openPaths.has(entry.path);
+        return (
+          <li key={entry.path || entry.name} className="border-b border-border last:border-b-0">
+            <DeviceRow
+              entry={entry}
+              depth={depth}
+              open={expanded}
+              selected={selected === entry.path}
+              onFolder={() => onToggle(entry.path)}
+            />
+            {expanded && (
+              <DeviceTree parent={entry.path} depth={depth + 1} openPaths={openPaths} selected={selected} onToggle={onToggle} />
+            )}
+          </li>
+        );
+      })}
+      {entries.length > cap && (
+        <li>
+          <button
+            type="button"
+            className="w-full py-2 text-left text-xs text-gold"
+            style={{ paddingLeft: 28 + depth * 14 }}
+            onClick={() => setCap((n) => n + 80)}
+          >
+            Show {Math.min(80, entries.length - cap)} more
+          </button>
+        </li>
+      )}
+    </ul>
+  );
+}
+
+function StripThumb({ entry }: { entry: DeviceEntry }) {
+  const [thumb, setThumb] = useState<string | null>(null);
+  useEffect(() => {
+    const file = getDeviceBagFile(entry.path);
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    setThumb(url);
+    return () => URL.revokeObjectURL(url);
+  }, [entry.path]);
+  if (!thumb) return null;
+  return (
+    <button type="button" className="shrink-0" onClick={() => void useFiles.getState().openDeviceFile(entry.path)}>
+      <img src={thumb} alt={entry.name} className="size-16 rounded object-cover" />
+    </button>
+  );
+}
+
+function FolderStrip({ path }: { path: string }) {
+  const images = listTreePath(path)
+    .filter((e) => e.kind === "file" && viewerKind(e.mime, e.name) === "image")
+    .slice(0, 48);
+  if (!images.length) return null;
+  return (
+    <div className="sticky bottom-0 z-10 flex gap-1 overflow-x-auto border-t border-border bg-card py-2">
+      {images.map((img) => (
+        <StripThumb key={img.path} entry={img} />
+      ))}
+    </div>
   );
 }
 
@@ -447,6 +555,8 @@ export function DevicePane() {
   const index = useFiles((s) => s.deviceIndex);
   const volumes = useFiles((s) => s.deviceVolumes);
   const [q, setQ] = useState("");
+  const [openPaths, setOpenPaths] = useState<Set<string>>(new Set());
+  const [selected, setSelected] = useState("");
   const dirRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -475,11 +585,36 @@ export function DevicePane() {
   const qn = q.trim().toLowerCase();
   const filtered = qn
     ? (index.length ? index : entries).filter(
-        (e) => e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn),
+        (e) => e.kind === "file" && (e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn)),
       )
     : entries;
   const crumb = mode === "tree" ? [rootName, ...path.split("/").filter(Boolean)] : stack.map((s) => s.name);
   const ready = status === "ready";
+  const quota = useFiles((s) => s.quotaBytes);
+  const reveal = (next: string) => {
+    setSelected(next);
+    setOpenPaths((prev) => {
+      const set = new Set(prev);
+      const bits = next.split("/").filter(Boolean);
+      let acc = "";
+      for (const bit of bits) {
+        acc = acc ? `${acc}/${bit}` : bit;
+        set.add(acc);
+      }
+      return set;
+    });
+    useFiles.getState().goDevicePath(next);
+  };
+  const toggleFolder = (folderPath: string) => {
+    setSelected(folderPath);
+    setOpenPaths((prev) => {
+      const set = new Set(prev);
+      if (set.has(folderPath)) set.delete(folderPath);
+      else set.add(folderPath);
+      return set;
+    });
+    useFiles.getState().goDevicePath(folderPath);
+  };
 
   return (
     <div
@@ -568,11 +703,12 @@ export function DevicePane() {
           </Button>
         ))}
       </div>
-      <p className="mt-3 max-w-xl text-xs text-muted">
-        Tap Grant storage and choose Internal storage, DCIM, or the SD card. Android shows one folder
-        sheet — that is the only permission a website is allowed. After that, folders open in place and
-        photos, video, and documents open when you tap them.
-      </p>
+      {!ready && (
+        <p className="mt-3 max-w-xl text-xs text-muted">
+          Tap Open phone storage and choose Internal storage, DCIM, or the SD card. Folders expand in place.
+          Tap a photo, video, or document to open it.
+        </p>
+      )}
       {volumes.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2">
           {volumes.map((v) => (
@@ -586,40 +722,106 @@ export function DevicePane() {
 
       {ready ? (
         <>
-          <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <p className="text-sm text-foreground">
-                {rootName}
-                {scanning ? " · scanning…" : ""}
-              </p>
-              <p className="text-xs text-subtle tabular-nums">
-                {fileCount.toLocaleString()} files
-                {folders ? ` · ${folders.toLocaleString()} folders` : ""} · {formatBytes(bytes)}
+          <div className="mt-4 rounded-lg bg-elevated px-3 py-3 hairline">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="truncate text-sm text-foreground">
+                  {rootName || "Internal storage"}
+                  {scanning ? " · reading…" : ""}
+                </p>
+                <p className="text-xs text-subtle tabular-nums">
+                  {folders.toLocaleString()} folders · {fileCount.toLocaleString()} files
+                </p>
+              </div>
+              <p className="shrink-0 text-right text-xs text-subtle tabular-nums">
+                {quota ? (
+                  <>
+                    Free {formatBytes(Math.max(0, quota - bytes))}
+                    <br />
+                    {formatBytes(bytes)} / {formatBytes(quota)}
+                  </>
+                ) : (
+                  formatBytes(bytes)
+                )}
               </p>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="ghost" onClick={() => void useFiles.getState().deviceUp()} disabled={crumb.length <= 1}>
-                Up
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().importDeviceFolder()}>
-                Import this tree
-              </Button>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background">
+              <div
+                className="h-full bg-gold"
+                style={{ width: `${quota ? Math.min(100, Math.max(4, Math.round((bytes / quota) * 100))) : 8}%` }}
+              />
             </div>
           </div>
-          <p className="mt-2 truncate text-xs text-muted">{crumb.join(" / ")}</p>
+          <div className="mt-3 flex gap-1 overflow-x-auto">
+            {crumb.map((label, i) => {
+              const next = mode === "tree" ? path.split("/").filter(Boolean).slice(0, i).join("/") : "";
+              const active = i === crumb.length - 1;
+              return (
+                <button
+                  key={`${label}-${i}`}
+                  type="button"
+                  className={cn(
+                    "shrink-0 rounded-full px-2.5 py-1 text-xs",
+                    active ? "bg-gold text-background" : "bg-elevated text-muted",
+                  )}
+                  onClick={() => {
+                    if (mode === "tree") reveal(next);
+                  }}
+                >
+                  {label || "Storage"}
+                </button>
+              );
+            })}
+          </div>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button size="sm" variant="ghost" onClick={() => void useFiles.getState().deviceUp()} disabled={crumb.length <= 1}>
+              Up
+            </Button>
+            <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().importDeviceFolder()}>
+              Copy into library
+            </Button>
+          </div>
           <div className="mt-3">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search every file on this disk" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search files in this storage" />
           </div>
-          <ul className="mt-3 overflow-hidden rounded-lg hairline">
-            {filtered.length === 0 ? (
-              <li className="px-3 py-8 text-center text-sm text-muted">This folder is empty.</li>
+          <div className="mt-3 overflow-hidden rounded-lg hairline">
+            {qn ? (
+              filtered.length === 0 ? (
+                <p className="px-3 py-8 text-center text-sm text-muted">No files match.</p>
+              ) : (
+                <ul>
+                  {filtered.slice(0, 200).map((e) => (
+                    <li key={e.path || e.name} className="border-b border-border last:border-b-0">
+                      <DeviceRow
+                        entry={e}
+                        depth={0}
+                        open={false}
+                        selected={selected === e.path}
+                        onFolder={() => toggleFolder(e.path)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : mode === "tree" ? (
+              <DeviceTree parent="" depth={0} openPaths={openPaths} selected={selected} onToggle={toggleFolder} />
             ) : (
-              filtered.slice(0, 400).map((e) => <DeviceRow key={e.path || e.name} entry={e} />)
+              <ul>
+                {entries.map((e) => (
+                  <li key={e.path || e.name} className="border-b border-border last:border-b-0">
+                    <DeviceRow
+                      entry={e}
+                      depth={0}
+                      open={false}
+                      selected={false}
+                      onFolder={() => void useFiles.getState().enterDeviceFolder(e.name)}
+                    />
+                  </li>
+                ))}
+              </ul>
             )}
-          </ul>
-          {filtered.length > 400 && (
-            <p className="mt-2 text-xs text-muted">Showing the first 400. Search to narrow this folder.</p>
-          )}
+          </div>
+          {mode === "tree" && <FolderStrip path={selected || path} />}
         </>
       ) : status === "need-gesture" ? (
         <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">

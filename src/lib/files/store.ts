@@ -398,6 +398,7 @@ type Store = {
   resumeDeviceAccess: () => Promise<void>;
   mountDeviceFiles: (files: File[]) => Promise<void>;
   enterDeviceFolder: (name: string) => Promise<void>;
+  goDevicePath: (path: string) => void;
   deviceUp: () => Promise<void>;
   refreshDevice: () => Promise<void>;
   importDeviceFile: (name: string) => Promise<void>;
@@ -1222,6 +1223,10 @@ export const useFiles = create<Store>((set, get) => ({
     if (!next) return;
     const entries = await listDirectory(next);
     set({ deviceStack: [...stack, { name, handle: next }], deviceEntries: entries });
+  },
+  goDevicePath: (path) => {
+    if (get().deviceMode !== "tree") return;
+    set({ devicePath: path, deviceEntries: listTreePath(path) });
   },
   deviceUp: async () => {
     if (get().deviceMode === "tree") {

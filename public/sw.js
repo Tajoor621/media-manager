@@ -1,5 +1,5 @@
 /* Media Manager offline cache — production only */
-const CACHE = "mm-621-v8";
+const CACHE = "mm-621-v9";
 const SCOPE = self.registration.scope;
 const PRECACHE = [
   "./",
