@@ -10,7 +10,7 @@ import { objectUrlFor, useFiles } from "@/lib/files/store";
 import { useShallow } from "zustand/react/shallow";
 import { viewerKind } from "@/lib/files/mime";
 import { formatBytes, formatDate } from "@/lib/files/format";
-import { ROOT_ID, TRASH_ID, type FileNode, type PlaceId, type ViewerKind } from "@/lib/files/types";
+import { FOLDER_IDS, ROOT_ID, TRASH_ID, type FileNode, type PlaceId, type ViewerKind } from "@/lib/files/types";
 import { FileGlyph } from "./file-icon";
 import { BrandMark, BrandWordmark } from "./Brand";
 import { cn } from "@/lib/utils";
@@ -27,6 +27,8 @@ export function FilePane() {
   const folderId = useFiles((s) => s.currentFolderId());
   const ingest = useFiles((s) => s.ingestFiles);
   const isHome = place === "internal" && folderId === ROOT_ID && !search;
+  const systemFolders = new Set<string>(Object.values(FOLDER_IDS));
+  const shown = isHome ? nodes.filter((n) => !systemFolders.has(n.id)) : nodes;
   const gallery = (place === "photos" || place === "videos") && viewMode === "grid" && !search;
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
   const [dropOver, setDropOver] = useState(false);
@@ -99,8 +101,8 @@ export function FilePane() {
       )}
       {isHome && <HomeDashboard />}
       {isHome && <RecentsRail />}
-      {!nodes.length ? (
-        <Empty search={search} place={place} />
+      {!shown.length ? (
+        isHome ? null : <Empty search={search} place={place} />
       ) : viewMode === "grid" ? (
         <div
           className={cn(
@@ -108,7 +110,7 @@ export function FilePane() {
             gallery ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6",
           )}
         >
-          {nodes.map((n) => (
+          {shown.map((n) => (
             <GridCard
               key={n.id}
               node={n}
@@ -139,7 +141,7 @@ export function FilePane() {
               </button>
             </div>
           )}
-          {nodes.map((n) => (
+          {shown.map((n) => (
             <ListRow
               key={n.id}
               node={n}
@@ -183,6 +185,8 @@ function HomeDashboard() {
     { place: "documents", label: "Documents", count: docs.length, cover: pick(docs), kind: "pdf" },
   ];
 
+  const live = tiles.filter((t) => t.count > 0);
+
   return (
     <section className="mb-6">
       <StorageMeters />
@@ -194,64 +198,58 @@ function HomeDashboard() {
             void useFiles.getState().connectDevice();
           }}
         >
-          Connect device storage
-        </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={(e) => {
-            e.stopPropagation();
-            useFiles.getState().goPlace("device");
-          }}
-        >
-          Open RAM & ROM
+          Open phone storage
         </Button>
       </div>
-      <div className="mb-4 flex items-end justify-between gap-3">
-        <div>
-          <h2 className="font-display text-xs text-gold">Collections</h2>
-          <p className="mt-1 text-xs text-subtle tabular-nums">
-            {files.length} files · {formatBytes(storage)}
-          </p>
-        </div>
-      </div>
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        {tiles.map((t) => {
-          const media = t.cover && (t.kind === "image" || t.kind === "video");
-          return (
-            <button
-              key={t.place}
-              type="button"
-              className="overflow-hidden rounded-lg bg-card text-left hairline"
-              onClick={(e) => {
-                e.stopPropagation();
-                useFiles.getState().goPlace(t.place);
-              }}
-            >
-              <div className="relative aspect-4/3 bg-elevated">
-                {media && t.cover ? (
-                  <Thumb id={t.cover.id} kind={viewerKind(t.cover.mime, t.cover.name)} />
-                ) : (
-                  <div className="flex h-full items-center justify-center">
-                    <FileGlyph kind={t.kind} className="size-8" />
+      {live.length > 0 && (
+        <>
+          <div className="mb-4 flex items-end justify-between gap-3">
+            <div>
+              <h2 className="font-display text-xs text-gold">Collections</h2>
+              <p className="mt-1 text-xs text-subtle tabular-nums">
+                {files.length} files · {formatBytes(storage)}
+              </p>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            {live.map((t) => {
+              const media = t.cover && (t.kind === "image" || t.kind === "video");
+              return (
+                <button
+                  key={t.place}
+                  type="button"
+                  className="overflow-hidden rounded-lg bg-card text-left hairline"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    useFiles.getState().goPlace(t.place);
+                  }}
+                >
+                  <div className="relative aspect-4/3 bg-elevated">
+                    {media && t.cover ? (
+                      <Thumb id={t.cover.id} kind={viewerKind(t.cover.mime, t.cover.name)} />
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <FileGlyph kind={t.kind} className="size-8" />
+                      </div>
+                    )}
+                    {t.kind === "video" && (
+                      <span className="absolute top-2 right-2 rounded-full bg-background/75 p-1">
+                        <Film className="size-3.5 text-gold" />
+                      </span>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 bg-background/75 px-2.5 py-2">
+                      <p className="text-sm">{t.label}</p>
+                      <p className="text-xs text-subtle tabular-nums">
+                        {t.count} {t.count === 1 ? "item" : "items"}
+                      </p>
+                    </div>
                   </div>
-                )}
-                {t.kind === "video" && (
-                  <span className="absolute top-2 right-2 rounded-full bg-background/75 p-1">
-                    <Film className="size-3.5 text-gold" />
-                  </span>
-                )}
-                <div className="absolute inset-x-0 bottom-0 bg-background/75 px-2.5 py-2">
-                  <p className="text-sm">{t.label}</p>
-                  <p className="text-xs text-subtle tabular-nums">
-                    {t.count} {t.count === 1 ? "item" : "items"}
-                  </p>
-                </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
     </section>
   );
 }

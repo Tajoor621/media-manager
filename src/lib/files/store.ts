@@ -499,7 +499,7 @@ export const useFiles = create<Store>((set, get) => ({
   nodes: Object.fromEntries(folderTree(0).map((n) => [n.id, n])),
   recents: [],
   settings: defaultSettings,
-  tabs: [{ id: "tab-home", title: "Library", place: "internal", folderId: ROOT_ID }],
+  tabs: [{ id: "tab-home", title: "Storage", place: "device", folderId: ROOT_ID }],
   activeTabId: "tab-home",
   selectedIds: [],
   selectMode: false,
@@ -1254,29 +1254,31 @@ export const useFiles = create<Store>((set, get) => ({
   },
   openDeviceFile: async (name) => {
     const path = name.includes("/") ? name : get().devicePath ? `${get().devicePath}/${name}` : name;
-    const id = `device:${path}`;
-    if (!get().nodes[id]) {
-      const file = await resolveDeviceFile(get, path);
-      if (!file) {
-        toast.error("Grant the folder again, then tap the file.");
-        return;
-      }
-      const mime = file.type || mimeFromName(file.name);
-      const node: FileNode = {
-        id,
-        parentId: parentForDeviceFile(mime, file.name),
-        name: file.name,
-        kind: "file",
-        mime,
-        size: file.size,
-        createdAt: file.lastModified || Date.now(),
-        updatedAt: file.lastModified || Date.now(),
-        favorite: false,
-        bookmark: false,
-        source: `device:${path}`,
-      };
-      set({ nodes: { ...get().nodes, [id]: node } });
+    const file = await resolveDeviceFile(get, path);
+    if (!file) {
+      toast.error("That file is not readable. Open phone storage and choose the folder again.");
+      return;
     }
+    const id = `device:${path}`;
+    const mime = file.type || mimeFromName(file.name);
+    const node: FileNode = {
+      id,
+      parentId: parentForDeviceFile(mime, file.name),
+      name: file.name,
+      kind: "file",
+      mime,
+      size: file.size,
+      createdAt: file.lastModified || Date.now(),
+      updatedAt: file.lastModified || Date.now(),
+      favorite: false,
+      bookmark: false,
+      source: `device:${path}`,
+    };
+    blobCache.set(id, file);
+    set({
+      nodes: { ...get().nodes, [id]: node },
+      recents: [id, ...get().recents.filter((r) => r !== id)].slice(0, 40),
+    });
     get().openViewer(id);
   },
   importDeviceFolder: async () => {

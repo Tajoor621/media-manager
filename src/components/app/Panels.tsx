@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Camera, ChevronDown, ChevronRight, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Radio, Search } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Radio, Search } from "lucide-react";
 import { useFiles } from "@/lib/files/store";
 import { useShallow } from "zustand/react/shallow";
 import { formatBytes } from "@/lib/files/format";
@@ -20,7 +20,7 @@ import {
 import { useP2PRoom } from "@/lib/multiplayer/use-p2p-room";
 import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
-import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, getDeviceBagFile, listTreePath, prefersDirectoryInput } from "@/lib/files/fs-access";
+import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, getDeviceBagFile, listTreePath, prefersDirectoryInput, treeParent } from "@/lib/files/fs-access";
 import type { DeviceEntry } from "@/lib/files/types";
 
 export function SettingsPanel() {
@@ -386,13 +386,28 @@ function DeviceRow({
   selected: boolean;
   onFolder: () => void;
 }) {
+  const rowRef = useRef<HTMLButtonElement>(null);
   const [thumb, setThumb] = useState<string | null>(null);
   const [dims, setDims] = useState("");
+  const [seen, setSeen] = useState(false);
   const kind = viewerKind(entry.mime, entry.name);
   const visual = entry.kind === "file" && (kind === "image" || kind === "video");
 
   useEffect(() => {
-    if (!visual || !entry.path) return;
+    const el = rowRef.current;
+    if (!el || !visual) return;
+    const io = new IntersectionObserver(
+      ([hit]) => {
+        if (hit?.isIntersecting) setSeen(true);
+      },
+      { rootMargin: "240px" },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [visual]);
+
+  useEffect(() => {
+    if (!seen || !visual || !entry.path) return;
     const file = getDeviceBagFile(entry.path);
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -405,7 +420,7 @@ function DeviceRow({
       img.src = url;
     }
     return () => URL.revokeObjectURL(url);
-  }, [entry.path, visual, kind]);
+  }, [seen, entry.path, visual, kind]);
 
   const openFile = () => {
     void useFiles.getState().openDeviceFile(entry.path || entry.name);
@@ -417,10 +432,11 @@ function DeviceRow({
 
   return (
     <button
+      ref={rowRef}
       type="button"
       className={cn(
-        "flex w-full items-center gap-2 py-2 pr-3 text-left",
-        selected ? "bg-gold/10" : "hover:bg-elevated",
+        "flex w-full items-center gap-2 py-2 pr-3 text-left touch-manipulation",
+        selected ? "bg-gold/10" : "active:bg-elevated",
       )}
       style={{ paddingLeft: 8 + depth * 14 }}
       onClick={entry.kind === "folder" ? onFolder : openFile}
@@ -432,7 +448,7 @@ function DeviceRow({
       )}
       {thumb ? (
         kind === "video" ? (
-          <video src={thumb} muted className="size-12 shrink-0 rounded object-cover" />
+          <video src={thumb} muted playsInline className="size-12 shrink-0 rounded object-cover" />
         ) : (
           <img src={thumb} alt="" className="size-12 shrink-0 rounded object-cover" />
         )
@@ -442,16 +458,20 @@ function DeviceRow({
         </span>
       )}
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm text-foreground">{entry.name}</span>
-        <span className="mt-0.5 block truncate text-xs text-subtle">
-          {entry.kind === "folder"
-            ? `${childFiles.toLocaleString()} files${childFolders ? ` · ${childFolders.toLocaleString()} folders` : ""}`
-            : [fileStamp(entry.lastModified), dims].filter(Boolean).join(" · ") || entry.mime}
+        <span className="flex items-baseline justify-between gap-3">
+          <span className="truncate text-sm text-foreground">{entry.name}</span>
+          {dims ? <span className="shrink-0 text-xs text-subtle tabular-nums">{dims}</span> : null}
+        </span>
+        <span className="mt-0.5 flex items-baseline justify-between gap-3 text-xs text-subtle">
+          <span className="truncate">
+            {entry.kind === "folder"
+              ? `${childFiles.toLocaleString()} files${childFolders ? ` · ${childFolders.toLocaleString()} folders` : ""}`
+              : fileStamp(entry.lastModified) || entry.mime}
+          </span>
+          <span className="shrink-0 tabular-nums">{entry.kind === "file" ? formatBytes(entry.size) : ""}</span>
         </span>
       </span>
-      <span className="shrink-0 text-xs text-subtle tabular-nums">
-        {entry.kind === "file" ? formatBytes(entry.size) : ""}
-      </span>
+      {selected ? <Check className="size-4 shrink-0 text-gold" /> : null}
     </button>
   );
 }
@@ -821,7 +841,9 @@ export function DevicePane() {
               </ul>
             )}
           </div>
-          {mode === "tree" && <FolderStrip path={selected || path} />}
+          {mode === "tree" && (
+            <FolderStrip path={getDeviceBagFile(selected) ? treeParent(selected) : selected || path} />
+          )}
         </>
       ) : status === "need-gesture" ? (
         <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">
