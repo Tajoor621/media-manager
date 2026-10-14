@@ -1,5 +1,5 @@
 /* Media Manager offline cache — production only */
-const CACHE = "mm-621-v7";
+const CACHE = "mm-621-v10";
 const SCOPE = self.registration.scope;
 const PRECACHE = [
   "./",
@@ -55,6 +55,26 @@ self.addEventListener("fetch", (event) => {
   if (req.method !== "GET") return;
   if (url.origin !== self.location.origin) return;
   if (url.pathname.includes("/api/")) return;
+  const freshFirst =
+    req.mode === "navigate" ||
+    url.pathname.endsWith(".js") ||
+    url.pathname.endsWith(".css") ||
+    url.pathname.endsWith(".html") ||
+    url.pathname.endsWith("sw.js");
+  if (freshFirst) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok && res.type === "basic") {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((cached) => cached || Response.error())),
+    );
+    return;
+  }
   event.respondWith(
     caches.match(req).then((cached) => {
       const fetched = fetch(req)
