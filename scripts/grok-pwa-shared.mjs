@@ -4,7 +4,8 @@
  * and the Nitro bundler can both consume it.
  */
 import { existsSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 export const DEFAULT_APP_NAME = "Grok App";
 export const OG_SERVICE_URL_DEFAULT = "https://og.grok.me";
@@ -414,15 +415,22 @@ function insertBeforeHeadClose(html, snippet) {
 }
 
 export function normalizeHeadContext(ctx = {}) {
-  const cwd = ctx.cwd ?? process.cwd();
+  const cwd = ctx.cwd ?? join(dirname(fileURLToPath(import.meta.url)), "__isolated_context__");
   // Middleware passes a baked `site`. Still consult the workspace so a
   // public/og.jpg generated after that snapshot (or missed by a wrong cwd)
   // wins over the og.grok.me placeholder. Vercel has no public/ to read, so
   // a correct bake is unchanged.
-  const site = applyCustomCardFromFs(
-    ctx.site !== undefined ? ctx.site : snapshotOgIdentity(cwd).site,
-    cwd,
-  );
+  // A caller-supplied identity is authoritative. For context-only calls (for
+  // example unit tests or isolated rendering), do not accidentally inherit the
+  // repository's site.json just because process.cwd() happens to be the repo.
+  // Production plugin/middleware callers pass cwd explicitly and retain the
+  // filesystem snapshot behavior.
+  const siteSource = ctx.site !== undefined
+    ? ctx.site
+    : ctx.cwd !== undefined
+      ? snapshotOgIdentity(cwd).site
+      : {};
+  const site = applyCustomCardFromFs(siteSource, cwd);
   const appName = resolveOgTitle(site, ctx.appName ?? DEFAULT_APP_NAME, ctx.host ?? "");
   return {
     appName,
