@@ -74,27 +74,20 @@ export type PickResult = {
 export async function pickDirectory(startIn?: WellKnownDir): Promise<PickResult> {
   const show = picker();
   if (!show || !fsaUsable()) return { handle: null, reason: "unsupported" };
-  const tryPick = async (mode: "read" | "readwrite", start?: WellKnownDir): Promise<PickResult> => {
-    try {
-      const handle = await show({
-        id: start ?? "media-manager-device",
-        mode,
-        startIn: start,
-      });
-      return { handle };
-    } catch (err) {
-      const name = err instanceof DOMException ? err.name : "";
-      if (name === "AbortError") return { handle: null, reason: "cancelled" };
-      return { handle: null, reason: "blocked" };
-    }
-  };
-  const rw = await tryPick("readwrite", startIn);
-  if (rw.handle || rw.reason === "cancelled") return rw;
-  const read = await tryPick("read", startIn);
-  if (read.handle || read.reason === "cancelled" || !startIn) return read;
-  const again = await tryPick("readwrite");
-  if (again.handle || again.reason === "cancelled") return again;
-  return tryPick("read");
+  try {
+    // One read prompt only. A readwrite attempt is what Android denies
+    // before it ever shows the folder list.
+    const handle = await show({
+      id: "media-manager-all-storage",
+      mode: "read",
+      startIn,
+    });
+    return { handle };
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : "";
+    if (name === "AbortError") return { handle: null, reason: "cancelled" };
+    return { handle: null, reason: "blocked" };
+  }
 }
 
 export type ScanStats = { files: number; folders: number; bytes: number; index: DeviceEntry[] };
@@ -355,14 +348,6 @@ export async function permissionState(
 export async function ensurePermission(handle: FileSystemDirectoryHandle): Promise<boolean> {
   const dir = handle as DirHandle;
   try {
-    const q = await dir.queryPermission?.({ mode: "readwrite" });
-    if (q === "granted") return true;
-    const r = await dir.requestPermission?.({ mode: "readwrite" });
-    if (r === "granted") return true;
-  } catch {
-    /* read-only handles */
-  }
-  try {
     const q = await dir.queryPermission?.({ mode: "read" });
     if (q === "granted") return true;
     const r = await dir.requestPermission?.({ mode: "read" });
@@ -493,4 +478,40 @@ export function countFilesUnder(path: string): number {
 
 export function treeParent(path: string): string {
   return parentPath(path);
+}
+
+export function mountIndexAsTree(entries: DeviceEntry[]) {
+  clearDeviceTree();
+  const folderSet = new Set<string>();
+  for (const entry of entries) {
+    if (entry.kind !== "file" || !entry.path) continue;
+    treeFiles.push(entry);
+    const parts = entry.path.split("/").filter(Boolean);
+    for (let d = 1; d < parts.length; d++) folderSet.add(parts.slice(0, d).join("/"));
+  }
+  treeFolders = [...folderSet].map((path) => ({
+    name: path.slice(path.lastIndexOf("/") + 1),
+    path,
+    kind: "folder" as const,
+    size: 0,
+    mime: "inode/directory",
+    lastModified: 0,
+  }));
+}
+
+const grantedRoots = new Map<string, FileSystemDirectoryHandle>();
+
+export function setGrantedRoots(handles: FileSystemDirectoryHandle[]) {
+  grantedRoots.clear();
+  for (const handle of handles) grantedRoots.set(handle.name || "Storage", handle);
+}
+
+export async function readGrantedFile(path: string): Promise<File | null> {
+  const bag = deviceBag.get(path);
+  if (bag) return bag;
+  const slash = path.indexOf("/");
+  if (slash <= 0) return null;
+  const root = grantedRoots.get(path.slice(0, slash));
+  if (!root) return null;
+  return readDevicePath(root, path.slice(slash + 1));
 }

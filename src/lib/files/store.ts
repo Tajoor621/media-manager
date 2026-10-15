@@ -29,6 +29,7 @@ import {
   listDirectory,
   listTreePath,
   mountFileList,
+  mountIndexAsTree,
   openDeviceSubdir,
   permissionState,
   pickDirectory,
@@ -36,8 +37,8 @@ import {
   readDevicePath,
   requestDeviceFolderInput,
   fsaUsable,
-  prefersDirectoryInput,
   scanDirectory,
+  setGrantedRoots,
   treeParent,
   writeDeviceFile,
   type WellKnownDir,
@@ -60,8 +61,13 @@ async function rememberVolumes(handles: FileSystemDirectoryHandle[]) {
     unique.push(handle);
   }
   volumeHandles = unique;
-  await idb.setMeta("deviceVolumes", unique);
-  if (unique[0]) await idb.setMeta("deviceHandle", unique[0]);
+  setGrantedRoots(unique);
+  try {
+    await idb.setMeta("deviceVolumes", unique);
+    if (unique[0]) await idb.setMeta("deviceHandle", unique[0]);
+  } catch {
+    /* this browser cannot store folder handles; access still lasts for the visit */
+  }
   return unique;
 }
 
@@ -123,8 +129,12 @@ async function scanSavedVolumes(
     set({ deviceFileCount: files, deviceFolders: folders, deviceBytes: bytes, deviceIndex: index, deviceVolumes: snaps });
   }
   if (scanGen === gen) {
+    mountIndexAsTree(index);
     set((state) => ({
       deviceScanning: false,
+      deviceMode: "tree",
+      devicePath: "",
+      deviceEntries: listTreePath(""),
       nodes: mergeDeviceNodes(state.nodes, index),
     }));
     void idb.setMeta("deviceSnapshot", {
@@ -281,14 +291,13 @@ async function resolveDeviceFile(
   get: () => { deviceMode: "none" | "fsa" | "tree"; devicePath: string; deviceStack: DeviceNav[] },
   name: string,
 ): Promise<File | null> {
-  if (get().deviceMode === "tree") {
-    const path = name.includes("/") ? name : get().devicePath ? `${get().devicePath}/${name}` : name;
-    return getDeviceBagFile(path) ?? getDeviceBagFile(name) ?? null;
-  }
-  if (name.includes("/")) {
-    const slash = name.indexOf("/");
-    const head = name.slice(0, slash);
-    const rest = name.slice(slash + 1);
+  const path = name.includes("/") ? name : get().devicePath ? `${get().devicePath}/${name}` : name;
+  const bag = getDeviceBagFile(path) ?? getDeviceBagFile(name);
+  if (bag) return bag;
+  if (path.includes("/")) {
+    const slash = path.indexOf("/");
+    const head = path.slice(0, slash);
+    const rest = path.slice(slash + 1);
     const vol = volumeHandles.find((h) => h.name === head);
     if (vol && rest) {
       const fromVol = await readDevicePath(vol, rest);
@@ -296,13 +305,13 @@ async function resolveDeviceFile(
     }
     const root = get().deviceStack[0]?.handle;
     if (root) {
-      const fromRoot = await readDevicePath(root, rest || name);
+      const fromRoot = await readDevicePath(root, rest || path);
       if (fromRoot) return fromRoot;
     }
   }
   const cur = get().deviceStack[get().deviceStack.length - 1];
   if (!cur) return null;
-  return readDeviceFile(cur.handle, name);
+  return readDeviceFile(cur.handle, path.split("/").pop() || name);
 }
 
 type Store = {
@@ -587,6 +596,7 @@ export const useFiles = create<Store>((set, get) => ({
         else pending.push(handle);
       }
       volumeHandles = granted.length ? granted : pending;
+      setGrantedRoots(volumeHandles);
       set({
         nodes: Object.fromEntries(nodes.map((n) => [n.id, n])),
         recents,
@@ -1119,35 +1129,34 @@ export const useFiles = create<Store>((set, get) => ({
   },
   connectDevice: async (startIn) => {
     get().goPlace("device");
-    // Android Chrome rejects showDirectoryPicker with "permission denied" and never
-    // shows a picker. The folder input must be opened in the same tap.
-    if (prefersDirectoryInput() || !fsaUsable()) {
+    if (!fsaUsable()) {
       requestDeviceFolderInput();
       return;
     }
     const picked = await pickDirectory(startIn);
     if (picked.handle) {
-        const handle = picked.handle;
-        const handles = [...volumeHandles.filter((h) => h.name !== handle.name), handle];
-        toast.success(`Indexing ${handle.name || "storage"}…`);
-        void requestPersistentStorage();
-        void get().refreshHardware();
-        try {
-          await scanSavedVolumes(handles, set);
-          const snap = get().deviceVolumes.find((v) => v.name === (handle.name || "Storage"));
-          toast.success(
-            snap
-              ? `${handle.name}: ${snap.files.toLocaleString()} files · ${snap.folders.toLocaleString()} folders`
-              : `Opened ${handle.name || "storage"}`,
-          );
-        } catch {
-          set({ deviceScanning: false });
-          toast.error("Could not read that folder. Pick the storage root again and allow access.");
-        }
-        return;
+      const handle = picked.handle;
+      const handles = [...volumeHandles.filter((h) => h.name !== handle.name), handle];
+      toast.success(`Reading ${handle.name || "storage"}…`);
+      void requestPersistentStorage();
+      void get().refreshHardware();
+      try {
+        await scanSavedVolumes(handles, set);
+        const snap = get().deviceVolumes.find((v) => v.name === (handle.name || "Storage"));
+        toast.success(
+          snap
+            ? `${handle.name}: ${snap.files.toLocaleString()} files · ${snap.folders.toLocaleString()} folders`
+            : `Opened ${handle.name || "storage"}`,
+        );
+      } catch {
+        set({ deviceScanning: false });
+        toast.error("Could not read that folder. Choose the top Internal storage folder and allow access.");
+      }
+      return;
     }
     if (picked.reason === "cancelled") return;
-    requestDeviceFolderInput();
+    set({ deviceStatus: "idle" });
+    toast.message("Tap Choose folder and select the top Internal storage folder.");
   },
   resumeDeviceAccess: async () => {
     const pending = volumeHandles;

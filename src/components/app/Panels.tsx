@@ -20,7 +20,7 @@ import {
 import { useP2PRoom } from "@/lib/multiplayer/use-p2p-room";
 import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
-import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, getDeviceBagFile, listTreePath, prefersDirectoryInput, treeParent } from "@/lib/files/fs-access";
+import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, fsaUsable, listTreePath, readGrantedFile, treeParent } from "@/lib/files/fs-access";
 import type { DeviceEntry } from "@/lib/files/types";
 
 export function SettingsPanel() {
@@ -408,18 +408,24 @@ function DeviceRow({
 
   useEffect(() => {
     if (!seen || !visual || !entry.path) return;
-    const file = getDeviceBagFile(entry.path);
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setThumb(url);
-    if (kind === "image") {
-      const img = new Image();
-      img.onload = () => {
-        if (img.naturalWidth) setDims(`${img.naturalWidth}×${img.naturalHeight}`);
-      };
-      img.src = url;
-    }
-    return () => URL.revokeObjectURL(url);
+    let dead = false;
+    let url = "";
+    void readGrantedFile(entry.path).then((file) => {
+      if (dead || !file) return;
+      url = URL.createObjectURL(file);
+      setThumb(url);
+      if (kind === "image") {
+        const img = new Image();
+        img.onload = () => {
+          if (!dead && img.naturalWidth) setDims(`${img.naturalWidth}×${img.naturalHeight}`);
+        };
+        img.src = url;
+      }
+    });
+    return () => {
+      dead = true;
+      if (url) URL.revokeObjectURL(url);
+    };
   }, [seen, entry.path, visual, kind]);
 
   const openFile = () => {
@@ -533,11 +539,17 @@ function DeviceTree({
 function StripThumb({ entry }: { entry: DeviceEntry }) {
   const [thumb, setThumb] = useState<string | null>(null);
   useEffect(() => {
-    const file = getDeviceBagFile(entry.path);
-    if (!file) return;
-    const url = URL.createObjectURL(file);
-    setThumb(url);
-    return () => URL.revokeObjectURL(url);
+    let dead = false;
+    let url = "";
+    void readGrantedFile(entry.path).then((file) => {
+      if (dead || !file) return;
+      url = URL.createObjectURL(file);
+      setThumb(url);
+    });
+    return () => {
+      dead = true;
+      if (url) URL.revokeObjectURL(url);
+    };
   }, [entry.path]);
   if (!thumb) return null;
   return (
@@ -596,11 +608,11 @@ export function DevicePane() {
   };
 
   const grantFolder = () => {
-    if (prefersDirectoryInput()) {
-      dirRef.current?.click();
+    if (fsaUsable()) {
+      void useFiles.getState().connectDevice();
       return;
     }
-    void useFiles.getState().connectDevice();
+    dirRef.current?.click();
   };
   const qn = q.trim().toLowerCase();
   const filtered = qn
@@ -686,7 +698,7 @@ export function DevicePane() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button size="sm" onClick={grantFolder}>
-          Grant storage
+          Allow storage once
         </Button>
         <Button size="sm" variant="secondary" onClick={grantFolder}>
           Add SD card
@@ -725,8 +737,7 @@ export function DevicePane() {
       </div>
       {!ready && (
         <p className="mt-3 max-w-xl text-xs text-muted">
-          Tap Open phone storage and choose Internal storage, DCIM, or the SD card. Folders expand in place.
-          Tap a photo, video, or document to open it.
+          Tap Allow storage once, choose the top Internal storage folder, then Allow. Every folder on that drive opens from then on. Use Add SD card only if a second drive is not inside that folder.
         </p>
       )}
       {volumes.length > 0 && (
@@ -842,7 +853,13 @@ export function DevicePane() {
             )}
           </div>
           {mode === "tree" && (
-            <FolderStrip path={getDeviceBagFile(selected) ? treeParent(selected) : selected || path} />
+            <FolderStrip
+              path={
+                selected && listTreePath(selected).length === 0 && selected.includes("/")
+                  ? treeParent(selected)
+                  : selected || path
+              }
+            />
           )}
         </>
       ) : status === "need-gesture" ? (
@@ -850,25 +867,23 @@ export function DevicePane() {
           <HardDrive className="size-8 text-gold" />
           <h2 className="text-lg font-medium">Resume {rootName}</h2>
           <p className="max-w-md text-sm text-muted">
-            This device already granted a folder. Tap once so the browser can read it again, then every
-            file in that tree is scanned.
+            This drive was already allowed. Tap Continue once. You will not be asked for a new folder.
           </p>
           <Button onClick={() => void useFiles.getState().resumeDeviceAccess()}>
             <FolderOpen className="size-4" />
-            Resume storage access
+            Continue
           </Button>
         </div>
       ) : (
         <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">
           <HardDrive className="size-8 text-gold" />
-          <h2 className="text-lg font-medium">Connect device storage</h2>
+          <h2 className="text-lg font-medium">Allow phone storage</h2>
           <p className="max-w-md text-sm text-muted">
-            Pick Internal storage, Download, DCIM, or the SD card. This app then walks every file in that
-            tree for preview, search, RAM/ROM meters, and import.
+            One allow covers every folder on the drive you select. Pick the top Internal storage folder, not a single album.
           </p>
           <Button onClick={grantFolder}>
             <FolderOpen className="size-4" />
-            Open phone storage
+            Allow storage once
           </Button>
         </div>
       )}
