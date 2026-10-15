@@ -8,16 +8,14 @@ Luxury media manager PWA — browse, preview, share, and install as a home-scree
 
 ## Enable GitHub Pages (one click)
 
-The site is already built on the `gh-pages` branch. GitHub will not serve it until you turn Pages on:
-
 1. Open https://github.com/Tajoor621/media-manager/settings/pages
-2. **Build and deployment → Source:** Deploy from a branch
-3. **Branch:** `gh-pages` / `/ (root)` → Save
-4. Wait ~1 minute, then open https://tajoor621.github.io/media-manager/
+2. Under **Build and deployment → Source**, select **GitHub Actions**.
+3. Push to `main` or open **Actions → Deploy GitHub Pages → Run workflow**.
+4. Wait for the workflow to finish successfully, then open https://tajoor621.github.io/media-manager/.
 
-After that you can paste the live URL into PWABuilder for an Android APK.
+This repository uses `.github/workflows/pages.yml` as the single source of truth for deployment. Do not select the `gh-pages` branch deployment method while using this workflow. The workflow builds `dist/` and deploys it using the official GitHub Pages actions.
 
-A GitHub Actions workflow (`.github/workflows/pages.yml`) also rebuilds on every push to `main`. Optional: switch Source to **GitHub Actions** once you have approved the `github-pages` environment.
+After deployment, you can paste the live URL into PWABuilder to package the PWA for Android.
 
 ## Stack
 
@@ -35,6 +33,8 @@ A GitHub Actions workflow (`.github/workflows/pages.yml`) also rebuilds on every
 | `npm run build` | Production Node/Vercel build |
 | `npm run build:pages` | Static GitHub Pages build → `dist/` |
 | `npm run typecheck` | TypeScript check |
+| `npm test` | Unit and regression tests |
+| `npm run lint` | ESLint checks |
 
 **Output directory (Pages):** `dist/`
 
@@ -42,7 +42,7 @@ A GitHub Actions workflow (`.github/workflows/pages.yml`) also rebuilds on every
 
 Works on GitHub Pages: library, photos/videos/audio/PDF/ZIP/SQLite viewers, upload, drag-and-drop, offline cache, home-screen install.
 
-Needs a Node host (Vercel, not Pages): Google Drive RPC, Nearby WebRTC signaling.
+Needs a Node host (Vercel, not Pages): Google Drive RPC, Nearby WebRTC signaling and server-backed authentication. The GitHub Pages build explicitly disables authentication because static hosting cannot run the auth server.
 
 ## Vercel (full app)
 
@@ -58,3 +58,8 @@ Connect this GitHub repo to Vercel. Use `npm run build`. Root `/`.
 ## License
 
 Private project for Tajoor Enterprises / 621 FileManager.
+
+
+## App environment
+
+`config/app-env.json` contains public build flags only. Never put secrets, API keys, passwords, or private credentials in this file. The GitHub Pages build is configured for local/offline use with authentication disabled; enable authentication only on a server deployment with the required environment variables and database configured.
