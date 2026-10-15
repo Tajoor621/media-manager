@@ -22,5 +22,4 @@ test-results
 coverage
 *.local
 startup.sh
-AGENTS.md
 AGENTS.project.md
