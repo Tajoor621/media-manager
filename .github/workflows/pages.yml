@@ -29,6 +29,7 @@ jobs:
         env:
           GITHUB_PAGES: "1"
           BASE_PATH: /media-manager/
+          VITE_AUTH_ENABLED: "false"
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
