@@ -1,0 +1,38 @@
+name: Verify Media Manager
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      - name: Script and application tests
+        run: npm test
+      - name: TypeScript validation
+        run: npm run typecheck
+      - name: Lint
+        run: npm run lint
+      - name: GitHub Pages production build
+        run: npm run build:pages
+        env:
+          GITHUB_PAGES: "1"
+          BASE_PATH: /media-manager/
+          VITE_AUTH_ENABLED: "false"
