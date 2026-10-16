@@ -280,70 +280,38 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
     return () => window.clearInterval(id);
   }, []);
 
+  // Browsers expose only estimates of app memory and origin storage, not the
+  // phone's full RAM or ROM. Never present CPU cores or selected files as RAM.
   const ramTotal = hardware?.ramBytes ?? hardware?.heapLimit ?? 0;
   const ramUsed = hardware?.heapUsed ?? 0;
-  const romTotal = hardware?.romQuota || quotaBytes;
-  const romUsed = hardware?.romUsed || storageBytes;
-  const ramPct = ramTotal ? Math.min(100, (ramUsed / ramTotal) * 100) : ramUsed ? 8 : 0;
-  const romPct = romTotal ? Math.min(100, (romUsed / romTotal) * 100) : 0;
-  const diskPct =
-    romTotal && deviceBytes ? Math.min(100, (deviceBytes / Math.max(romTotal, deviceBytes)) * 100) : deviceBytes ? 40 : 0;
-
   const ramLabel = hardware?.ramGb
-    ? `${hardware.ramGb} GB`
+    ? `${hardware.ramGb} GB (browser estimate)`
     : ramTotal
-      ? formatBytes(ramTotal)
-      : hardware?.cores
-        ? `${hardware.cores} CPU cores`
-        : hardware?.embedded
-          ? "Blocked in preview"
-          : "Hidden by this browser";
+      ? `${formatBytes(ramTotal)} (browser estimate)`
+      : "Not available";
   const ramDetail = [
-    hardware?.embedded ? "Open the full Chrome window — the preview cannot read phone RAM" : null,
-    hardware?.ramSource === "device" ? "Device RAM reported by the browser" : null,
-    ramUsed ? `${formatBytes(ramUsed)} in use by this app` : null,
-    hardware?.heapLimit ? `heap cap ${formatBytes(hardware.heapLimit)}` : null,
-    hardware?.cores ? `${hardware.cores} cores` : null,
-    hardware?.model || hardware?.platform || null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+    ramUsed ? `${formatBytes(ramUsed)} JS heap used` : null,
+    hardware?.cores ? `${hardware.cores} logical CPU cores (not RAM)` : null,
+    "System-wide RAM access is not available to web apps",
+  ].filter(Boolean).join(" · ");
+  const ramPct = ramTotal && ramUsed ? Math.min(100, (ramUsed / ramTotal) * 100) : 0;
 
-  const indexed = deviceBytes > 0 || deviceCount > 0;
-  const romLabel = indexed
-    ? `${formatBytes(deviceBytes)} indexed`
-    : romTotal
-      ? formatBytes(romTotal)
-      : "Not counted";
-  const romDetail = indexed
-    ? `${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${scanning ? " · still reading" : ""}${rootName ? ` · ${rootName}` : ""}`
-    : romTotal
-      ? `Browser storage quota: ${formatBytes(romTotal)}. Select files to count accessible media.`
-      : "Choose a folder or files to count accessible media.";
+  const appQuota = hardware?.romQuota || quotaBytes;
+  const appUsage = hardware?.romUsed || storageBytes;
+  const appPct = appQuota ? Math.min(100, (appUsage / appQuota) * 100) : 0;
+  const appDetail = appQuota
+    ? `Browser origin usage: ${formatBytes(appUsage)} of approximately ${formatBytes(appQuota)} allowed. Not total phone ROM.`
+    : `Library storage: ${formatBytes(storageBytes)}. Total device capacity is unavailable to this web app.`;
+
+  const selectedDetail = deviceCount
+    ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} selected files · ${deviceFolders.toLocaleString()} folders${rootName ? ` · ${rootName}` : ""}`
+    : "Select a folder or files to browse them inside Media Manager. This is not whole-device access.";
 
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
-      <MeterCard icon={<MemoryStick className="size-4 text-gold" />} label="RAM" value={ramLabel} detail={ramDetail || hardware?.platform || ""} pct={ramPct} />
-      <MeterCard
-        icon={<Cpu className="size-4 text-gold" />}
-        label="ROM"
-        value={romLabel}
-        detail={romDetail}
-        pct={romPct}
-      />
-      <MeterCard
-        icon={<HardDrive className="size-4 text-gold" />}
-        label="Device disk"
-        value={ready || deviceCount ? `${formatBytes(deviceBytes)}${scanning ? "…" : ""}` : "Not connected"}
-        detail={
-          deviceCount
-            ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${rootName ? ` · ${rootName}` : ""}`
-            : hardware?.embedded
-              ? "Embedded previews may block device pickers. Open the live URL in a browser."
-              : "Choose a supported folder or select individual files"
-        }
-        pct={diskPct}
-      />
+      <MeterCard icon={<MemoryStick className="size-4 text-gold" />} label="RAM information" value={ramLabel} detail={ramDetail} pct={ramPct} />
+      <MeterCard icon={<Cpu className="size-4 text-gold" />} label="App storage (not ROM)" value={formatBytes(appUsage)} detail={appDetail} pct={appPct} />
+      <MeterCard icon={<HardDrive className="size-4 text-gold" />} label="Selected device files" value={ready || deviceCount ? `${formatBytes(deviceBytes)}${scanning ? "…" : ""}` : "No files selected"} detail={selectedDetail} pct={0} />
     </div>
   );
 }
