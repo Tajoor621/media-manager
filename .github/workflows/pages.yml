@@ -32,6 +32,8 @@ jobs:
         run: node scripts/capture-pwa-screenshots.mjs
         env:
           BASE_PATH: /media-manager/
+      - name: Validate PWABuilder manifest and asset dimensions
+        run: node scripts/check-pwa-manifest.mjs
       - name: Publish dist to configured gh-pages branch
         uses: peaceiris/actions-gh-pages@v4
         with:
