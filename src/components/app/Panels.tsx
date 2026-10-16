@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Camera, Check, ChevronDown, ChevronRight, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Radio, Search } from "lucide-react";
+import { Camera, Check, ChevronDown, ChevronRight, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Search } from "lucide-react";
 import { useFiles } from "@/lib/files/store";
-import { useShallow } from "zustand/react/shallow";
 import { formatBytes } from "@/lib/files/format";
 import { viewerKind } from "@/lib/files/mime";
 import { Button, Input, Modal } from "@/components/ui";
