@@ -454,6 +454,7 @@ export function injectGrokPwaHead(html, ctx = {}) {
       // Adding a second /__grok manifest causes scanners to inspect a generic
       // 180px-only manifest instead of the real Media Manager manifest.
       if (key === "manifest") {
+        if (existsSync(join(cwd, "public/manifest.webmanifest"))) return false;
         return !/<link\\b(?=[^>]*\\brel\\s*=\\s*["']manifest["'])[^>]*>/i.test(next);
       }
       if (key === "apple-touch-icon") return !next.includes('href="/__grok/icon-180.png"');
