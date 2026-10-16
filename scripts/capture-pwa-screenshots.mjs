@@ -6,7 +6,7 @@
  */
 import { chromium } from "playwright";
 import { createServer } from "node:http";
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve, extname, sep } from "node:path";
 
 const root = resolve(process.cwd(), "dist");
@@ -29,13 +29,32 @@ const chrome = process.env.CHROME_PATH || ["/usr/bin/google-chrome", "/usr/bin/g
 let browser;
 try {
   browser = await chromium.launch({ headless: true, ...(chrome ? { executablePath: chrome } : {}), args: ["--no-sandbox"] });
+  // Produce a real padded maskable icon from the existing official brand icon.
+  // Keep the central artwork in Android's maskable safe zone.
+  const iconPage = await browser.newPage();
+  await iconPage.goto(`http://127.0.0.1:${port}${base}`, { waitUntil: "domcontentloaded" });
+  const iconData = await iconPage.evaluate(async (iconUrl) => {
+    const image = new Image();
+    image.src = iconUrl;
+    await image.decode();
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 512;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas is unavailable");
+    ctx.fillStyle = "#0A0A0B";
+    ctx.fillRect(0, 0, 512, 512);
+    ctx.drawImage(image, 96, 96, 320, 320);
+    return canvas.toDataURL("image/png").split(",")[1];
+  }, `http://127.0.0.1:${port}${base}icon-512.png`);
+  writeFileSync(join(root, "icon-maskable-512.png"), Buffer.from(iconData, "base64"));
+  await iconPage.close();
   for (const target of [
     { file: "media-manager-desktop.png", width: 1280, height: 800, mobile: false },
     { file: "media-manager-mobile.png", width: 390, height: 844, mobile: true },
   ]) {
     const context = await browser.newContext({ viewport: { width: target.width, height: target.height }, deviceScaleFactor: 1, isMobile: target.mobile, hasTouch: target.mobile, reducedMotion: "reduce" });
     const page = await context.newPage();
-    await page.goto(`http://127.0.0.1:${port}${base}`, { waitUntil: "networkidle", timeout: 45000 });
+    await page.goto(`http://127.0.0.1:${port}${base}`, { waitUntil: "domcontentloaded", timeout: 45000 });
     await page.waitForTimeout(1200);
     await page.screenshot({ path: join(out, target.file), fullPage: false, animations: "disabled" });
     await context.close();
