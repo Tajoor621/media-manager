@@ -450,7 +450,12 @@ export function injectGrokPwaHead(html, ctx = {}) {
 
   const missing = grokPwaHeadTags(appName)
     .filter(([key]) => {
-      if (key === "manifest") return !next.includes('href="/__grok/manifest.webmanifest"');
+      // Respect an app-owned manifest (TanStack HeadContent / GitHub Pages).
+      // Adding a second /__grok manifest causes scanners to inspect a generic
+      // 180px-only manifest instead of the real Media Manager manifest.
+      if (key === "manifest") {
+        return !/<link\\b(?=[^>]*\\brel\\s*=\\s*["']manifest["'])[^>]*>/i.test(next);
+      }
       if (key === "apple-touch-icon") return !next.includes('href="/__grok/icon-180.png"');
       return !next.includes(`name="${key}"`);
     })
