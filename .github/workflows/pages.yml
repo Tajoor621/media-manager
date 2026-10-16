@@ -1,4 +1,4 @@
-name: Deploy GitHub Pages
+name: Build and publish Media Manager to gh-pages
 
 on:
   push:
@@ -6,16 +6,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
-  pages: write
-  id-token: write
+  contents: write
 
 concurrency:
-  group: pages
+  group: media-manager-gh-pages
   cancel-in-progress: true
 
 jobs:
-  build:
+  build-and-publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,22 +21,18 @@ jobs:
         with:
           node-version: "22"
           cache: npm
-      - run: npm ci
-      - name: Build static PWA
+      - name: Install dependencies
+        run: npm ci
+      - name: Build GitHub Pages static site
         run: npm run build:pages
         env:
           GITHUB_PAGES: "1"
           BASE_PATH: /media-manager/
-      - uses: actions/upload-pages-artifact@v3
+      - name: Publish dist to configured gh-pages branch
+        uses: peaceiris/actions-gh-pages@v4
         with:
-          path: dist
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: ./dist
+          force_orphan: false
+          keep_files: false
