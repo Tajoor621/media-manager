@@ -171,13 +171,9 @@ export function SettingsPanel() {
                 Install app
               </Button>
             )}
-            <Button
-              size="sm"
-              variant="secondary"
-              onClick={() => window.open(`${import.meta.env.BASE_URL}?install=1&platform=ios`, "_blank")}
-            >
-              Home screen guide
-            </Button>
+            <p className="self-center text-xs text-subtle">
+              iPhone: Safari → Share → Add to Home Screen
+            </p>
           </div>
         </section>
         <section>
