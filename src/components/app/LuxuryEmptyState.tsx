@@ -22,7 +22,7 @@ const content: Record<string, EmptyConfig> = {
 };
 
 export function LuxuryEmptyState({ place, search }: { place: string; search?: string }) {
-  const config = search
+  const config: EmptyConfig = search
     ? { title: "No matching files", description: `Nothing matches “${search}”. Try a different search.`, icon: FileSearch, action: "Clear search" }
     : content[place] ?? content.internal;
   const Icon = config.icon;
