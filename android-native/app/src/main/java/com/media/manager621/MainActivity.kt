@@ -273,8 +273,9 @@ class MainActivity : FragmentActivity() {
     private fun previewNativeFile(file: java.io.File) {
         // FileProvider creates a temporary content URI for our own viewer.
         val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
-        val item = DocumentFile.fromSingleUri(this, uri)
-        if (item == null) error("Cannot preview file") else openFile(item)
+        val mime = android.webkit.MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+        openFile(uri, file.name, mime, file.length())
     }
 
     private fun manageInternal(file: java.io.File, parent: java.io.File) {
@@ -374,15 +375,16 @@ class MainActivity : FragmentActivity() {
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Save") { _, _ -> onSave(field.text.toString().trim()) }.show()
     }
-    private fun openFile(file: DocumentFile) {
-        val mime = file.type ?: ""
-        val name = file.name ?: ""
+    private fun openFile(file: DocumentFile) =
+        openFile(file.uri, file.name ?: "", file.type ?: "", file.length())
+
+    private fun openFile(uri: Uri, name: String, mime: String, length: Long) {
         layout("Preview • $name")
         button("← Back to files") { render() }
         when {
             mime.startsWith("image/") -> {
                 try {
-                    contentResolver.openInputStream(file.uri).use { stream ->
+                    contentResolver.openInputStream(uri).use { stream ->
                         val bitmap = BitmapFactory.decodeStream(stream)
                         requireNotNull(bitmap) { "Unsupported image format" }
                         val image = ImageView(this).apply {
@@ -396,7 +398,7 @@ class MainActivity : FragmentActivity() {
             }
             mime.startsWith("video/") -> {
                 val video = VideoView(this).apply {
-                    setVideoURI(file.uri)
+                    setVideoURI(uri)
                     setMediaController(MediaController(this@MainActivity))
                     layoutParams = LinearLayout.LayoutParams(-1, 700)
                     setOnErrorListener { _, _, _ -> error("Unsupported video codec"); true }
@@ -409,7 +411,7 @@ class MainActivity : FragmentActivity() {
                     try {
                         audio?.release()
                         audio = MediaPlayer().apply {
-                            setDataSource(this@MainActivity, file.uri)
+                            setDataSource(this@MainActivity, uri)
                             prepare()
                             start()
                         }
@@ -420,8 +422,8 @@ class MainActivity : FragmentActivity() {
             mime.startsWith("text/") || name.endsWith(".txt", true) ||
                 name.endsWith(".md", true) || name.endsWith(".json", true) -> {
                 try {
-                    require(file.length() <= 2_000_000) { "Text editor supports files up to 2 MB" }
-                    val body = contentResolver.openInputStream(file.uri)?.bufferedReader()?.use { it.readText() }
+                    require(length <= 2_000_000) { "Text editor supports files up to 2 MB" }
+                    val body = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
                         ?: throw IllegalStateException("File cannot be read")
                     val editor = EditText(this).apply {
                         setText(body)
@@ -435,7 +437,7 @@ class MainActivity : FragmentActivity() {
                             .setNegativeButton("Cancel", null)
                             .setPositiveButton("Overwrite") { _, _ ->
                                 try {
-                                    contentResolver.openOutputStream(file.uri, "wt").use {
+                                    contentResolver.openOutputStream(uri, "wt").use {
                                         requireNotNull(it) { "No write permission" }
                                         it.write(editor.text.toString().toByteArray(Charsets.UTF_8))
                                     }
