@@ -105,6 +105,9 @@ export async function clearLibrary(): Promise<void> {
   const tx = db.transaction(["nodes", "blobs", "meta"], "readwrite");
   tx.objectStore("nodes").clear();
   tx.objectStore("blobs").clear();
-  tx.objectStore("meta").clear();
+  // Preserve deviceHandle, deviceVolumes and deviceSnapshot. Clearing them
+  // would revoke our ability to resume the user-selected device folder.
+  tx.objectStore("meta").delete("seeded");
+  tx.objectStore("meta").delete("recents");
   await txDone(tx);
 }
