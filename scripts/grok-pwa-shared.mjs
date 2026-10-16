@@ -455,7 +455,7 @@ export function injectGrokPwaHead(html, ctx = {}) {
       // 180px-only manifest instead of the real Media Manager manifest.
       if (key === "manifest") {
         if (existsSync(join(cwd, "public/manifest.webmanifest"))) return false;
-        return !/<link\\b(?=[^>]*\\brel\\s*=\\s*["']manifest["'])[^>]*>/i.test(next);
+        return !/<link\b(?=[^>]*\brel\s*=\s*["']manifest["'])[^>]*>/i.test(next);
       }
       if (key === "apple-touch-icon") return !next.includes('href="/__grok/icon-180.png"');
       return !next.includes(`name="${key}"`);
