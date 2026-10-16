@@ -28,6 +28,7 @@ export function SettingsPanel() {
   const settings = useFiles((s) => s.settings);
   const transfers = useFiles((s) => s.transfers);
   const [installEvent, setInstallEvent] = useState<BeforeInstallPromptEvent | null>(null);
+  const [confirmClear, setConfirmClear] = useState(false);
 
   useEffect(() => {
     const onPrompt = (e: Event) => {
@@ -108,13 +109,16 @@ export function SettingsPanel() {
           <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Shortcuts</h3>
           <ul className="space-y-1.5 text-sm text-muted">
             {[
-              ["⌘K", "Search all files"],
+              ["⌘K / Ctrl+K", "Search all files"],
+              ["⌘, / Ctrl+,", "Open settings"],
+              ["⌘B / Ctrl+B", "Toggle sidebar"],
+              ["⌘N / Ctrl+N", "New folder"],
               ["⌘A", "Select all"],
               ["⌘C / ⌘X / ⌘V", "Copy, cut, paste"],
               ["Enter", "Open"],
               ["F2", "Rename"],
               ["Delete", "Move to trash"],
-              ["Backspace", "Up one folder"],
+              ["Backspace / ⌘↑", "Up one folder"],
               ["Esc", "Close viewer"],
             ].map(([k, v]) => (
               <li key={k} className="flex items-center justify-between gap-3">
@@ -186,9 +190,17 @@ export function SettingsPanel() {
             />
             Show hidden files
           </label>
-          <Button size="sm" variant="danger" onClick={() => void useFiles.getState().resetLibrary()}>
+          <Button size="sm" variant="danger" onClick={() => setConfirmClear(true)}>
             Clear library
           </Button>
+          <p className="mt-2 text-xs text-subtle">Deletes local library items. Saved device folder handles remain in the browser where supported.</p>
+          <Modal open={confirmClear} onClose={() => setConfirmClear(false)} title="Clear local library?">
+            <p className="text-sm text-muted">Your imported library items will be removed. This cannot be undone. Device folder connections are preserved.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <Button variant="secondary" onClick={() => setConfirmClear(false)}>Cancel</Button>
+              <Button variant="danger" onClick={() => { setConfirmClear(false); void useFiles.getState().resetLibrary(); }}>Clear library</Button>
+            </div>
+          </Modal>
         </section>
         <section className="overflow-hidden rounded-xl bg-ink">
           <BrandMark variant="lockup" className="mx-auto h-auto w-full max-w-xs" alt="Media Manager" />
