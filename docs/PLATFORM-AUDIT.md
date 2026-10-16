@@ -12,7 +12,7 @@ Updated: 2026-10-16. This document separates source-verified fixes from Android/
 - `src/lib/files/`: IndexedDB persistence, browser file-system access, mounted file paths, Zustand state.
 - `src/routes/`: main app and share-target route.
 - `server/`, `src/lib/auth/`, `src/lib/cloud/`, `src/lib/multiplayer/`: server-only and connector-dependent features.
-- Android native source: **not present** in the repository; no Kotlin/Java permission bridge, AndroidManifest.xml, Gradle Android project, or APK binary.
+- Native Android source: now present in `android-native/`, including Kotlin/Gradle, AndroidManifest, SAF explorer, native internal-storage explorer (after special permission approval), PIN/biometric lock, and Keystore-encrypted Vault. CI builds an APK artifact; on-device tests remain necessary.
 
 This is a source-level and CI audit, not a certification of every line or a substitute for testing on physical Android/iPhone devices.
 
@@ -33,7 +33,7 @@ This is a source-level and CI audit, not a certification of every line or a subs
 | P1 | README described an obsolete Pages setup | Rewritten for current app, iOS, Android TWA, CI, and limitations |
 | P2 | Multiple storage handles with the same display name can collide | Remaining: requires unique per-volume identity |
 | P2 | Empty folders do not always survive full-directory indexing | Remaining: folder-only entries should be retained in the indexed tree |
-| P2 | Android's system-wide storage permission is not available to web code | Requires separate native Android code and OS/user approval |
+| P2 | Android's system-wide storage permission is not available to web code | Separate native Android implementation added; OS approval still required, protected paths remain inaccessible |
 | P2 | `gh-pages` is static; server-backed Google Drive and Nearby signaling are not available there | Requires a supported backend deployment |
 | P2 | PWABuilder Android TWA fullscreen verification depends on Digital Asset Links at origin root | Requires verified signing fingerprint, package name, and control of origin-root `/.well-known/assetlinks.json` |
 | P2 | Web Share Target may not preserve a POST attachment when no app window is open | Requires queued share-target ingestion and mobile validation |
@@ -57,4 +57,4 @@ This is a source-level and CI audit, not a certification of every line or a subs
 - Fully operational Google Drive / Nearby connectors on a static GitHub Pages site.
 - A guaranteed PWABuilder score or Play Store approval.
 
-The PWA's local file manager can be functional without those capabilities. Full native Android file-manager access requires a separately developed and tested Android app component.
+The PWA's local file manager can be functional without those capabilities. A native Android alpha has now been implemented and compiled by CI; its runtime behavior, permissions, protected paths, vault UX, and secure login must still be verified on real devices. The iPhone/web app now also includes a locally encrypted Private Vault in Settings.
