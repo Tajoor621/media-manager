@@ -102,7 +102,7 @@ export function FilePane() {
       {isHome && <HomeDashboard />}
       {isHome && <RecentsRail />}
       {!shown.length ? (
-        isHome ? null : <Empty search={search} place={place} />
+        <Empty search={search} place={place} />
       ) : viewMode === "grid" ? (
         <div
           className={cn(
