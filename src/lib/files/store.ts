@@ -19,6 +19,7 @@ import {
   type ViewMode,
 } from "./types";
 import * as idb from "./idb";
+import { shareOrCopy } from "./share";
 import { seedLibrary, ensureLatestSamples, folderTree } from "./seed";
 import { mimeFromName, viewerKind } from "./mime";
 import {
@@ -1430,23 +1431,11 @@ export const useFiles = create<Store>((set, get) => ({
       const blob = await get().getBlob(n.id);
       if (blob) files.push(new File([blob], n.name, { type: n.mime }));
     }
-    if (navigator.share && files.length) {
-      try {
-        await navigator.share({ files, title: nodes[0]?.name });
-        return;
-      } catch {
-        /* user cancel or unsupported files */
-      }
-    }
-    if (navigator.share && nodes[0]) {
-      try {
-        await navigator.share({ title: nodes[0].name, text: `Share ${nodes[0].name} from Media Manager` });
-        return;
-      } catch {
-        /* cancel */
-      }
-    }
-    await get().downloadNodes(nodes.map((n) => n.id));
+    await shareOrCopy({
+      title: nodes[0]?.name ?? "Media Manager",
+      text: nodes.length === 1 ? nodes[0].name : nodes.map((n) => n.name).join("\\n"),
+      files,
+    });
   },
   exportToDevice: async (ids) => {
     const handle = get().deviceHandle;
