@@ -15,7 +15,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
@@ -27,7 +27,7 @@ import java.util.concurrent.Executor
  * Native-first Android file manager alpha. SAF grants are persisted by the OS.
  * Protected Android folders are deliberately not bypassed.
  */
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     private lateinit var vault: Vault
     private lateinit var pin: PinSecurity
     private lateinit var rootLayout: LinearLayout
