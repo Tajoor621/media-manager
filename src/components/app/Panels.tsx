@@ -21,6 +21,7 @@ import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
 import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, fsaUsable, hasDirectoryInput, prefersDirectoryInput, listTreePath, readGrantedFile, treeParent } from "@/lib/files/fs-access";
 import type { DeviceEntry } from "@/lib/files/types";
+import type { WellKnownDir } from "@/lib/files/fs-access";
 
 export function SettingsPanel() {
   const open = useFiles((s) => s.settingsOpen);
@@ -614,7 +615,7 @@ export function DevicePane() {
     void useFiles.getState().mountDeviceFiles(files);
   };
 
-  const grantFolder = () => {
+  const grantFolder = (startIn?: WellKnownDir) => {
     // On phones, showDirectoryPicker can be present but blocked by the APK's
     // Chrome/TWA environment. Prefer the user-initiated input picker instead.
     // It grants access only to selected files/folders, never all Android files.
@@ -624,7 +625,7 @@ export function DevicePane() {
       return;
     }
     if (fsaUsable()) {
-      void useFiles.getState().connectDevice();
+      void useFiles.getState().connectDevice(startIn);
       return;
     }
     if (hasDirectoryInput()) dirRef.current?.click();
@@ -716,7 +717,7 @@ export function DevicePane() {
         <Button size="sm" onClick={() => { if (status === "need-gesture") void useFiles.getState().resumeDeviceAccess(); else grantFolder(); }}>
           {status === "need-gesture" ? "Resume folder access" : "Choose a device folder"}
         </Button>
-        <Button size="sm" variant="secondary" onClick={grantFolder}>
+        <Button size="sm" variant="secondary" onClick={() => grantFolder()}>
           Choose another folder
         </Button>
         <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
