@@ -30,6 +30,8 @@ jobs:
       - name: Unit tests
         run: npm test
       - name: ESLint
+        if: always()
         run: npm run lint
       - name: Browser guard
+        if: always()
         run: node scripts/browser-guard.mjs
