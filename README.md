@@ -1,60 +1,103 @@
 # Media Manager 621
 
-Luxury media manager PWA — browse, preview, share, and install as a home-screen app.
+An offline-first, black-and-gold media and file library for desktop, Android, and iPhone. Built with React 19, TypeScript, TanStack Router/Start, Vite 8, Tailwind CSS 4, Zustand, and IndexedDB.
 
-**Live URL (after Pages is on):** https://tajoor621.github.io/media-manager/
+**Live iPhone/Android/desktop PWA:** https://tajoor621.github.io/media-manager/  
+**PWABuilder packaging and manifest checks:** https://www.pwabuilder.com/  
+**GitHub Actions:** https://github.com/Tajoor621/media-manager/actions  
+**Repository:** https://github.com/Tajoor621/media-manager
 
-**PWABuilder:** https://www.pwabuilder.com/?url=https://tajoor621.github.io/media-manager/
+## What works
 
-## Enable GitHub Pages (one click)
+| Feature | GitHub Pages PWA | Android PWA / PWABuilder TWA | iPhone Safari / Home Screen |
+| --- | --- | --- | --- |
+| Local library: import, folders, rename, copy, move, trash, favorites, search | Yes | Yes | Yes |
+| Photos, video, audio, PDF, text, ZIP, SQLite and hex preview | Browser-supported formats | Browser-supported formats | Browser-supported formats |
+| Offline app shell and previously cached assets | Yes, after first online visit | Yes, after first online visit | Subject to Safari storage and cache policies |
+| Select individual photos and files | Yes | Via Android file picker | Via iOS Files / photo picker |
+| Select a directory of files | Supported browser picker required | Device/browser dependent; may be blocked in TWA | Not reliable; use individual file selection |
+| Reopen previously selected directory without prompting | Browser dependent | Browser dependent | Not available as unrestricted directory access |
+| Unrestricted Android storage / MANAGE_EXTERNAL_STORAGE | **No** | **No: requires separate native Android implementation and OS approval** | Not applicable |
+| Google Drive connector | Needs compatible hosted backend/connector | Same | Same |
+| Nearby/WebRTC signaling | Needs compatible hosted backend | Same | Same |
 
-The site is already built on the `gh-pages` branch. GitHub will not serve it until you turn Pages on:
+**A PWABuilder APK is normally a Trusted Web Activity (TWA) wrapper of the live HTTPS site.** It does not turn JavaScript's folder picker into Android's system-wide storage permission. Android may prohibit selection of the storage root or protected folders. This app **never bypasses Android/iOS sandboxing**.
 
-1. Open https://github.com/Tajoor621/media-manager/settings/pages
-2. **Build and deployment → Source:** Deploy from a branch
-3. **Branch:** `gh-pages` / `/ (root)` → Save
-4. Wait ~1 minute, then open https://tajoor621.github.io/media-manager/
+## First run and phone storage
 
-After that you can paste the live URL into PWABuilder for an Android APK.
+The app opens in **Library** so the user can immediately import, preview, organize, and share files without granting storage permissions.
 
-A GitHub Actions workflow (`.github/workflows/pages.yml`) also rebuilds on every push to `main`. Optional: switch Source to **GitHub Actions** once you have approved the `github-pages` environment.
+1. Open **Device storage** to browse external files.
+2. Tap **Choose a device folder** or **Select folder**. On supported desktop browsers this uses the File System Access API; on phones it prefers a user-initiated file/directory input.
+3. Select a folder the OS allows. On phones where directory selection is unavailable, tap **Photos & files** to select individual files instead.
+4. Files selected through a picker are accessible for the current browser session. A stored directory handle may be resumed on browsers that support it; it is not a permanent Android permission.
+5. To keep copies inside Media Manager, use **Copy into library** (up to 400 files per operation), or upload selected files into the Library. Browser IndexedDB data can be lost if site data is cleared or the OS evicts storage. Back up important files elsewhere.
 
-## Stack
+**If the APK appears stuck on a permission screen:** open Library from the bottom navigation; try Photos & files; test the live URL in Chrome. If Chrome works but the installed APK does not, the wrapper's picker/permission behavior is different. Regenerate the TWA package after publishing updates; the web UI updates over HTTPS, but changes to native permissions require rebuilding the APK/AAB.
 
-- React 19 + TypeScript
-- TanStack Start / Router
-- Vite 8 + Tailwind CSS 4
-- IndexedDB library, File System Access, Web Share, service worker
+### Android install and APK
 
-## Scripts
+- Open the live URL in current Chrome on Android; choose **Install app** or **Add to Home screen** from Chrome's menu.
+- To create an APK/AAB, paste the live URL into [PWABuilder](https://www.pwabuilder.com/), check the manifest, and package for Android.
+- A TWA may require **Digital Asset Links** verification for a fullscreen trusted launch. Supply the signing certificate SHA-256 fingerprint and package name to generate the correct `/.well-known/assetlinks.json` at the **origin root**. GitHub Pages project sites cannot independently control the `https://tajoor621.github.io/.well-known/` origin-root path from this `/media-manager/` repository. Use a domain/origin you control, or the appropriate Android packaging/browser fallback. **Do not assume verification is configured.**
+- This repository contains the web app, **not a native Android Studio project**. There is currently no Kotlin/Java bridge implementing Android Storage Access Framework or the special `MANAGE_EXTERNAL_STORAGE` permission. A PWABuilder package cannot provide unrestricted storage access through the web code alone.
+- For a true native Android file manager, implement a separate Android bridge using the Storage Access Framework, persistable URI grants where permitted, runtime media permissions, and user-visible permission rationale. Special all-files access is restricted by Android/Play policy.
 
-| Command | Purpose |
-|---|---|
-| `npm install` | Install dependencies |
-| `npm run dev` | Local development |
-| `npm run build` | Production Node/Vercel build |
-| `npm run build:pages` | Static GitHub Pages build → `dist/` |
-| `npm run typecheck` | TypeScript check |
+### iPhone / iPad
 
-**Output directory (Pages):** `dist/`
+1. Open the live URL in **Safari**.
+2. Tap **Share → Add to Home Screen** (or the equivalent menu in your iOS version).
+3. Open Media Manager from its Home Screen icon.
+4. Use **Library → Upload** or **Device storage → Photos & files** to select files from Files or Photos. Safari does not offer unrestricted iPhone file-system access to a PWA.
+5. Test online and offline after the first load; offline cached assets do not guarantee persistent copies of all imported data.
 
-## What runs where
+## Features and structure
 
-Works on GitHub Pages: library, photos/videos/audio/PDF/ZIP/SQLite viewers, upload, drag-and-drop, offline cache, home-screen install.
+- `src/components/app/AppShell.tsx` — main responsive interface, navigation, library controls, settings, viewer integration, service-worker registration.
+- `src/components/app/Panels.tsx` — device browser, settings, storage meters, optional cloud/nearby panels.
+- `src/lib/files/store.ts` — Zustand library and device state, imports, previews, navigation, persistence.
+- `src/lib/files/fs-access.ts` — browser directory/file picker, selected-file tree, browser handle permissions.
+- `src/lib/files/idb.ts` — IndexedDB metadata and file blobs.
+- `public/manifest.webmanifest` — PWA identity, icons, maskable icon, shortcuts, screenshots, share target.
+- `public/sw.js` — offline caching and web share-target handling.
+- `public/tools/file-workbench.html` — standalone file workbench.
+- `public/screenshots/` — real desktop and mobile UI screenshots.
+- `scripts/capture-pwa-screenshots.mjs` — screenshot and maskable icon generation.
+- `scripts/check-pwa-manifest.mjs` — validates manifest assets and dimensions.
+- `scripts/build-pages.mjs` — static GitHub Pages build.
+- `.github/workflows/pages.yml` — builds `main`, validates and publishes `dist/` to `gh-pages`.
 
-Needs a Node host (Vercel, not Pages): Google Drive RPC, Nearby WebRTC signaling.
+## GitHub Pages deployment
 
-## Vercel (full app)
+In repository **Settings → Pages**, select **Deploy from a branch**, branch **`gh-pages`**, directory **`/ (root)`**. Do not switch to GitHub Actions source while using the branch-publishing workflow.
 
-Connect this GitHub repo to Vercel. Use `npm run build`. Root `/`.
+Each push to `main` runs `npm ci`, builds the PWA, captures genuine screenshots, checks the manifest, and publishes `dist/` to `gh-pages`. GitHub Pages then deploys that branch. The latest deployed build can be checked under **Actions** and **Deployments**. The live URL may lag behind the source branch briefly.
 
-## PWA
+## Local development and verification
 
-- `public/manifest.webmanifest` — standalone, theme `#0A0A0B`
-- `public/sw.js` — offline cache + share target
-- Icons: `icon-180.png`, `icon-192.png`, `icon-512.png`, `favicon.svg`
-- Brand lockup: `public/brand/logo.jpg`
+Requires Node.js 22 and npm.
+
+```bash
+npm ci
+npm run dev
+npm run typecheck
+npm test
+npm run lint
+npm run build:pages
+node scripts/capture-pwa-screenshots.mjs
+node scripts/check-pwa-manifest.mjs
+```
+
+Production `npm run build` is for the Node/Vercel server deployment; `npm run build:pages` generates the static site in `dist/`. Server-only connectors (for example Google Drive and Nearby signaling) are **not** automatically functional on GitHub Pages.
+
+## Security and data limitations
+
+- Files are selected by the user. The app cannot silently enumerate all files or protected app directories on Android or iOS.
+- IndexedDB is local to the browser/app origin. Clearing site data can delete the library; importing is not the same as making a device-wide backup.
+- The UI's ROM/device-file measurements describe browser-reported quota or indexed accessible files, **not authoritative total phone storage usage**.
+- Browser APIs, playback codecs, sharing, and offline persistence differ between Chrome, Safari, and Android wrappers.
+- A successful CI build or manifest check does not certify the APK's native permission behavior or a particular PWABuilder score. Validate on real devices.
 
 ## License
 
-Private project for Tajoor Enterprises / 621 FileManager.
+Project maintained by Tajoor621. No open-source license is declared in this repository; all rights remain with their respective owners unless a license is added.
