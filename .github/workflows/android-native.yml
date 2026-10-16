@@ -6,6 +6,9 @@ on:
       - "android-native/**"
       - ".github/workflows/android-native.yml"
   workflow_dispatch:
+concurrency:
+  group: android-native-${{ github.ref }}
+  cancel-in-progress: true
 permissions:
   contents: read
 jobs:
