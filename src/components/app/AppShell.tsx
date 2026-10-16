@@ -44,6 +44,7 @@ import { MiniPlayer, ViewerHost } from "./Viewers";
 import { CloudPane, CommandPalette, DevicePane, DevicePickers, NearbyPanel, SettingsPanel, StorageMeters } from "./Panels";
 import { BrandMark, BrandWordmark } from "./Brand";
 import { cn } from "@/lib/utils";
+import { OfflineIndicator } from "./OfflineIndicator";
 
 const PLACES: { id: PlaceId; label: string; icon: typeof Home }[] = [
   { id: "internal", label: "Library", icon: Home },
@@ -78,17 +79,37 @@ export function AppShell() {
     const onKey = (e: KeyboardEvent) => {
       const meta = e.metaKey || e.ctrlKey;
       const store = useFiles.getState();
-      if (meta && e.key.toLowerCase() === "k") {
-        e.preventDefault();
-        store.setCommandOpen(true);
+      // Do not hijack native editing shortcuts inside text fields.
+      if (isTyping(e)) {
+        if (e.key === "Escape") {
+          (e.target as HTMLElement).blur();
+        }
+        return;
       }
-      if (meta && e.key.toLowerCase() === "a" && !isTyping(e)) {
+      const key = e.key.toLowerCase();
+      if (meta && key === "k") { e.preventDefault(); store.setCommandOpen(true); return; }
+      if (meta && e.key === ",") { e.preventDefault(); store.setSettingsOpen(true); return; }
+      if (meta && key === "b") { e.preventDefault(); store.setSidebarOpen(!store.sidebarOpen); return; }
+      if (meta && key === "a") { e.preventDefault(); store.selectAll(); return; }
+      if (meta && key === "n") {
         e.preventDefault();
-        store.selectAll();
+        if (["device", "drive", "nearby"].includes(store.currentPlace())) return;
+        void store.askName("New folder", "New folder").then((name) => { if (name) void useFiles.getState().createFolder(name); });
+        return;
       }
-      if (meta && e.key.toLowerCase() === "c" && !isTyping(e)) store.copyToClipboard("copy");
-      if (meta && e.key.toLowerCase() === "x" && !isTyping(e)) store.copyToClipboard("cut");
-      if (meta && e.key.toLowerCase() === "v" && !isTyping(e)) void store.paste();
+      if (e.key === "Escape") {
+        if (store.namePrompt) { store.resolveNamePrompt(null); return; }
+        if (store.viewerId) { store.closeViewer(); return; }
+        if (store.commandOpen) { store.setCommandOpen(false); return; }
+        if (store.settingsOpen) { store.setSettingsOpen(false); return; }
+        if (store.nearbyOpen) { store.setNearbyOpen(false); return; }
+        if (store.sidebarOpen) { store.setSidebarOpen(false); return; }
+        store.clearSelection(); return;
+      }
+      if (meta && key === "arrowup") { e.preventDefault(); store.goUp(); return; }
+      if (meta && key === "c") store.copyToClipboard("copy");
+      if (meta && key === "x") store.copyToClipboard("cut");
+      if (meta && key === "v") void store.paste();
       if (e.key === "Enter" && !isTyping(e) && !store.viewerId && store.selectedIds[0]) {
         const n = store.nodes[store.selectedIds[0]];
         if (n?.kind === "folder") store.openFolder(n.id);
@@ -168,6 +189,7 @@ export function AppShell() {
     <div className="flex h-dvh flex-col bg-background text-foreground">
       <h1 className="sr-only">Media Manager</h1>
       <TopBar />
+      <OfflineIndicator />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
         <main className="relative flex min-w-0 flex-1 flex-col">
@@ -524,6 +546,12 @@ function Toolbar() {
     el.setAttribute("webkitdirectory", "");
     el.setAttribute("directory", "");
     el.multiple = true;
+  }, []);
+
+  useEffect(() => {
+    const onUpload = () => fileRef.current?.click();
+    document.addEventListener("mm-open-upload", onUpload);
+    return () => document.removeEventListener("mm-open-upload", onUpload);
   }, []);
 
   return (
