@@ -6,9 +6,9 @@ import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
   appNameFromHost,
-  createHeadInjector,
+  createHeadInjector as createHeadInjectorReal,
   grokXCreatorHeadTags,
-  injectGrokPwaHead,
+  injectGrokPwaHead as injectGrokPwaHeadReal,
   isDocumentPath,
   isInstallQuery,
   publicAppHost,
@@ -20,6 +20,15 @@ import {
 import { renderInstallPage } from "./grok-pwa-plugin.mjs";
 
 const TEMPLATE_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// The product ships its own manifest and OG identity. These tests exercise the
+// reusable Grok template injector against a clean isolated fixture instead of
+// accidentally picking up the product's public/manifest.webmanifest.
+const TEMPLATE_TEST_ROOT = mkdtempSync(join(tmpdir(), "grok-head-tests-"));
+const injectGrokPwaHead = (html, ctx = {}) =>
+  injectGrokPwaHeadReal(html, { cwd: TEMPLATE_TEST_ROOT, ...ctx });
+const createHeadInjector = (ctx = {}) =>
+  createHeadInjectorReal({ cwd: TEMPLATE_TEST_ROOT, ...ctx });
+
 
 test("injects before </head>", () => {
   const out = injectGrokPwaHead("<html><head><title>x</title></head><body></body></html>");
