@@ -409,6 +409,7 @@ export function mountFileList(files: File[], opts?: { append?: boolean }): Devic
   const folderSet = new Set<string>(opts?.append ? treeFolders.map((f) => f.path) : []);
   let totalBytes = 0;
   const before = treeFiles.length;
+  const existingPaths = new Map(treeFiles.map((entry, index) => [entry.path, index]));
 
   for (let i = 0; i < files.length; i++) {
     let rel = rels[i];
@@ -428,9 +429,12 @@ export function mountFileList(files: File[], opts?: { append?: boolean }): Devic
       mime: file.type || mimeFromName(file.name),
       lastModified: file.lastModified,
     };
-    const previous = treeFiles.findIndex((entry) => entry.path === rel);
-    if (previous >= 0) treeFiles[previous] = row;
-    else treeFiles.push(row);
+    const previous = existingPaths.get(rel);
+    if (previous !== undefined) treeFiles[previous] = row;
+    else {
+      existingPaths.set(rel, treeFiles.length);
+      treeFiles.push(row);
+    }
   }
 
   treeFolders = [...folderSet].map((path) => ({
