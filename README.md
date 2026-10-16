@@ -23,6 +23,14 @@ An offline-first, black-and-gold media and file library for desktop, Android, an
 
 **A PWABuilder APK is normally a Trusted Web Activity (TWA) wrapper of the live HTTPS site.** It does not turn JavaScript's folder picker into Android's system-wide storage permission. Android may prohibit selection of the storage root or protected folders. This app **never bypasses Android/iOS sandboxing**.
 
+## In-app media workflow and accurate storage meters
+
+Media Manager is intended to be the place where selected or imported media is browsed, previewed, played, edited when a compatible editor is implemented, organized, and shared. The operating system's Files/Photos picker is used **only to authorize or import files** where required; it cannot be replaced with an unrestricted web-only scanner.
+
+The dashboard shows three separate metrics: **RAM information** (browser-reported estimate, if available), **App storage** (browser-origin usage/quota, not total ROM), and **Selected device files** (files the user explicitly allowed the app to read). CPU cores are not RAM; indexed file size is not phone storage capacity. None of these cards is a drive to navigate.
+
+An internal viewer does not guarantee an internal editor for every file type. Unsupported formats, protected files, and native share sheets may still require OS assistance. Sharing to another app necessarily invokes a platform share interface.
+
 ## First run and phone storage
 
 The app opens in **Library** so the user can immediately import, preview, organize, and share files without granting storage permissions.
