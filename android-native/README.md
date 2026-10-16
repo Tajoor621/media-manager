@@ -10,7 +10,7 @@ Use Android Studio (JDK 17, Android SDK 35), open `android-native/`, sync Gradle
 
 - **Choose folder** uses `ACTION_OPEN_DOCUMENT_TREE`, takes persistable read/write URI grants and browses the approved tree.
 - **All files access** opens the Android **system Settings** approval screen for `MANAGE_EXTERNAL_STORAGE` on Android 11+. Approval is optional, cannot be granted programmatically, and Android blocks protected paths even after approval. Google Play limits this permission to qualifying file-management apps.
-- The native explorer initially browses user-approved SAF folders. A separate internal-storage explorer for the special all-files permission is not yet implemented.
+- The native explorer browses user-approved SAF folders and, after Android explicitly grants All files access, offers a separate native internal-storage explorer. Android still protects system and app-private paths.
 - **Hide** is a dot-prefix rename where the SAF provider allows it. This is not security; encrypted Vault is used for private files.
 - **Vault** encrypts a private copy using AES-256-GCM with a non-exportable Android Keystore key. It does not erase the original. To avoid false security guarantees, vault files are not exportable until an explicit authenticated export workflow is implemented.
 - A locally stored PIN verifier uses PBKDF2-HMAC-SHA256 with a random salt. The vault encryption key is bound to the app installation, not the PIN; the PIN locks the UI. Removing app data deletes encrypted files and key material.
