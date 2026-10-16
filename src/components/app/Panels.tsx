@@ -20,7 +20,7 @@ import {
 import { useP2PRoom } from "@/lib/multiplayer/use-p2p-room";
 import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
-import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, fsaUsable, listTreePath, readGrantedFile, treeParent } from "@/lib/files/fs-access";
+import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, fsaUsable, hasDirectoryInput, prefersDirectoryInput, listTreePath, readGrantedFile, treeParent } from "@/lib/files/fs-access";
 import type { DeviceEntry } from "@/lib/files/types";
 
 export function SettingsPanel() {
@@ -322,8 +322,8 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
   const romDetail = indexed
     ? `${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${scanning ? " · still reading" : ""}${rootName ? ` · ${rootName}` : ""}`
     : romTotal
-      ? `Chrome can use up to ${formatBytes(romTotal)}. Grant Internal storage to count your files.`
-      : "Grant Internal storage or the SD card to count files on this phone.";
+      ? `Browser storage quota: ${formatBytes(romTotal)}. Select files to count accessible media.`
+      : "Choose a folder or files to count accessible media.";
 
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
@@ -343,8 +343,8 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
           deviceCount
             ? `${scanning ? "Scanning · " : ""}${deviceCount.toLocaleString()} files · ${deviceFolders.toLocaleString()} folders${rootName ? ` · ${rootName}` : ""}`
             : hardware?.embedded
-              ? "The in-app preview cannot see phone storage. Open in Chrome, then grant the storage root."
-              : "Tap Grant storage and choose the top Internal storage or SD card folder"
+              ? "Embedded previews may block device pickers. Open the live URL in a browser."
+              : "Choose a supported folder or select individual files"
         }
         pct={diskPct}
       />
@@ -620,11 +620,20 @@ export function DevicePane() {
   };
 
   const grantFolder = () => {
+    // On phones, showDirectoryPicker can be present but blocked by the APK's
+    // Chrome/TWA environment. Prefer the user-initiated input picker instead.
+    // It grants access only to selected files/folders, never all Android files.
+    if (prefersDirectoryInput()) {
+      if (hasDirectoryInput()) dirRef.current?.click();
+      else filesRef.current?.click();
+      return;
+    }
     if (fsaUsable()) {
       void useFiles.getState().connectDevice();
       return;
     }
-    dirRef.current?.click();
+    if (hasDirectoryInput()) dirRef.current?.click();
+    else filesRef.current?.click();
   };
   const qn = q.trim().toLowerCase();
   const filtered = qn
@@ -710,13 +719,13 @@ export function DevicePane() {
 
       <div className="mt-4 flex flex-wrap gap-2">
         <Button size="sm" onClick={() => { if (status === "need-gesture") void useFiles.getState().resumeDeviceAccess(); else grantFolder(); }}>
-          {status === "need-gesture" ? "Resume folder access" : "Allow storage once"}
+          {status === "need-gesture" ? "Resume folder access" : "Choose a device folder"}
         </Button>
         <Button size="sm" variant="secondary" onClick={grantFolder}>
-          Add SD card
+          Choose another folder
         </Button>
         <Button size="sm" variant="secondary" onClick={() => dirRef.current?.click()}>
-          Folder picker
+          Select folder
         </Button>
         <Button size="sm" variant="secondary" onClick={() => filesRef.current?.click()}>
           <Images className="size-3.5" />
@@ -749,7 +758,7 @@ export function DevicePane() {
       </div>
       {!ready && (
         <p className="mt-3 max-w-xl text-xs text-muted">
-          Select a folder using the browser picker. Media Manager can read its permitted contents and remember the folder when supported. Android may restrict root folders and ask you to approve access again after restarting the browser. This is not Android system-wide storage permission.
+          Choose a folder or files using your phone’s system picker. Only selected content becomes available; Android and iOS do not grant whole-phone access to a web app. A folder may need to be selected again after restarting.
         </p>
       )}
       {volumes.length > 0 && (
@@ -879,7 +888,7 @@ export function DevicePane() {
           <HardDrive className="size-8 text-gold" />
           <h2 className="text-lg font-medium">Resume {rootName}</h2>
           <p className="max-w-md text-sm text-muted">
-            This drive was already allowed. Tap Continue once. You will not be asked for a new folder.
+            This folder was connected previously. Tap Continue to request access again if your browser requires it, or choose a different folder above.
           </p>
           <Button onClick={() => void useFiles.getState().resumeDeviceAccess()}>
             <FolderOpen className="size-4" />
@@ -889,13 +898,13 @@ export function DevicePane() {
       ) : (
         <div className="mt-8 flex flex-col items-center gap-3 px-4 py-8 text-center">
           <HardDrive className="size-8 text-gold" />
-          <h2 className="text-lg font-medium">Allow phone storage</h2>
+          <h2 className="text-lg font-medium">Browse files on this phone</h2>
           <p className="max-w-md text-sm text-muted">
-            One allow covers every folder on the drive you select. Pick the top Internal storage folder, not a single album.
+            Select a supported folder or individual files. Android may block top-level storage folders, and iPhone Safari uses its Files picker. This does not request unrestricted device permission.
           </p>
           <Button onClick={grantFolder}>
             <FolderOpen className="size-4" />
-            Allow storage once
+            Choose folder
           </Button>
         </div>
       )}
