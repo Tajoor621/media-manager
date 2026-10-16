@@ -1,5 +1,5 @@
 /* Media Manager offline cache — production only */
-const CACHE = "mm-621-v12";
+const CACHE = "mm-621-v13";
 const SCOPE = self.registration.scope;
 const PRECACHE = [
   "./",
@@ -15,7 +15,7 @@ const PRECACHE = [
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    caches.open(CACHE).then((cache) => cache.addAll(PRECACHE).catch(() => undefined)),
+    caches.open(CACHE).then((cache) => Promise.allSettled(PRECACHE.map((url) => cache.add(url)))),
   );
   self.skipWaiting();
 });
@@ -72,7 +72,12 @@ self.addEventListener("fetch", (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((cached) => cached || Response.error())),
+        .catch(async () => {
+          const cached = await caches.match(req);
+          if (cached) return cached;
+          if (req.mode === "navigate") return (await caches.match(new URL("./", SCOPE).href)) || Response.error();
+          return Response.error();
+        }),
     );
     return;
   }
