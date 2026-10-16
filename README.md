@@ -90,6 +90,10 @@ node scripts/check-pwa-manifest.mjs
 
 Production `npm run build` is for the Node/Vercel server deployment; `npm run build:pages` generates the static site in `dist/`. Server-only connectors (for example Google Drive and Nearby signaling) are **not** automatically functional on GitHub Pages.
 
+## Repository audit and known limitations
+
+See [Platform audit and Android/iPhone acceptance matrix](docs/PLATFORM-AUDIT.md) for resolved issues, outstanding native-platform work, and the checks required before claiming full device compatibility.
+
 ## Security and data limitations
 
 - Files are selected by the user. The app cannot silently enumerate all files or protected app directories on Android or iOS.
