@@ -413,21 +413,24 @@ export function mountFileList(files: File[], opts?: { append?: boolean }): Devic
   for (let i = 0; i < files.length; i++) {
     let rel = rels[i];
     if (!rel) continue;
-    if (sharedRoot && rel.startsWith(`${rootName}/`)) rel = rel.slice(rootName.length + 1);
+    if (sharedRoot && !opts?.append && rel.startsWith(`${rootName}/`)) rel = rel.slice(rootName.length + 1);
     if (!rel) continue;
     const file = files[i];
     deviceBag.set(rel, file);
     totalBytes += file.size;
     const parts = rel.split("/").filter(Boolean);
     for (let d = 1; d < parts.length; d++) folderSet.add(parts.slice(0, d).join("/"));
-    treeFiles.push({
+    const row: DeviceEntry = {
       name: parts[parts.length - 1] ?? file.name,
       path: rel,
       kind: "file",
       size: file.size,
       mime: file.type || mimeFromName(file.name),
       lastModified: file.lastModified,
-    });
+    };
+    const previous = treeFiles.findIndex((entry) => entry.path === rel);
+    if (previous >= 0) treeFiles[previous] = row;
+    else treeFiles.push(row);
   }
 
   treeFolders = [...folderSet].map((path) => ({
