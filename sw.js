@@ -1,5 +1,5 @@
 /* Media Manager offline cache — production only */
-const CACHE = "mm-621-v11";
+const CACHE = "mm-621-v12";
 const SCOPE = self.registration.scope;
 const PRECACHE = [
   "./",
@@ -10,6 +10,7 @@ const PRECACHE = [
   "./brand/logo.jpg",
   "./brand/mark.png",
   "./manifest.webmanifest",
+  "./tools/file-workbench.html",
 ].map((p) => new URL(p, SCOPE).href);
 
 self.addEventListener("install", (event) => {
