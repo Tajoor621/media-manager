@@ -48,7 +48,7 @@ The app opens in **Library** so the user can immediately import, preview, organi
 - Open the live URL in current Chrome on Android; choose **Install app** or **Add to Home screen** from Chrome's menu.
 - To create an APK/AAB, paste the live URL into [PWABuilder](https://www.pwabuilder.com/), check the manifest, and package for Android.
 - A TWA may require **Digital Asset Links** verification for a fullscreen trusted launch. Supply the signing certificate SHA-256 fingerprint and package name to generate the correct `/.well-known/assetlinks.json` at the **origin root**. GitHub Pages project sites cannot independently control the `https://tajoor621.github.io/.well-known/` origin-root path from this `/media-manager/` repository. Use a domain/origin you control, or the appropriate Android packaging/browser fallback. **Do not assume verification is configured.**
-- This repository contains the web app, **not a native Android Studio project**. There is currently no Kotlin/Java bridge implementing Android Storage Access Framework or the special `MANAGE_EXTERNAL_STORAGE` permission. A PWABuilder package cannot provide unrestricted storage access through the web code alone.
+- This repository now also includes **`android-native/`**, a separate Kotlin Android app (alpha) with Android's Storage Access Framework, optional All files access Settings link, file browser, hide/unhide by renaming, native image/audio/video/text previews, local PIN/biometric app lock and AES-GCM encrypted private copies. It is **not the same binary as the PWABuilder TWA**. The native explorer currently browses user-approved SAF folders; its optional all-files permission does not yet power a full-device explorer. See [Native Android build and limitations](android-native/README.md) and the [native APK build workflow](.github/workflows/android-native.yml).
 - For a true native Android file manager, implement a separate Android bridge using the Storage Access Framework, persistable URI grants where permitted, runtime media permissions, and user-visible permission rationale. Special all-files access is restricted by Android/Play policy.
 
 ### iPhone / iPad
@@ -59,6 +59,10 @@ The app opens in **Library** so the user can immediately import, preview, organi
 4. Use **Library → Upload** or **Device storage → Photos & files** to select files from Files or Photos. Safari does not offer unrestricted iPhone file-system access to a PWA.
 5. Test online and offline after the first load; offline cached assets do not guarantee persistent copies of all imported data.
 
+## Private Vault on iPhone and web
+
+Settings now includes a **Private Vault** for locally encrypted copies. It uses Web Crypto PBKDF2 (310,000 SHA-256 iterations) to derive an AES-256-GCM key from a passphrase of at least 12 characters. Files and filenames are encrypted in browser IndexedDB; the app locks the vault when hidden. Import supports up to 20 MB per file, with manual export. Originals remain unchanged. This is not a whole-phone hide/unhide feature. Browser data eviction, forgotten passphrases, and unbacked-up data can result in permanent loss.
+
 ## Features and structure
 
 - `src/components/app/AppShell.tsx` — main responsive interface, navigation, library controls, settings, viewer integration, service-worker registration.
@@ -66,6 +70,9 @@ The app opens in **Library** so the user can immediately import, preview, organi
 - `src/lib/files/store.ts` — Zustand library and device state, imports, previews, navigation, persistence.
 - `src/lib/files/fs-access.ts` — browser directory/file picker, selected-file tree, browser handle permissions.
 - `src/lib/files/idb.ts` — IndexedDB metadata and file blobs.
+- `src/lib/files/private-vault.ts` — encrypted browser vault.
+- `src/components/app/PrivateVaultPanel.tsx` — vault controls integrated into Settings.
+- `android-native/` — separate native Android Kotlin alpha and debug APK workflow.
 - `public/manifest.webmanifest` — PWA identity, icons, maskable icon, shortcuts, screenshots, share target.
 - `public/sw.js` — offline caching and web share-target handling.
 - `public/tools/file-workbench.html` — standalone file workbench.
