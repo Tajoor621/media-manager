@@ -6,6 +6,7 @@ import { viewerKind } from "@/lib/files/mime";
 import { Button, Input, Modal } from "@/components/ui";
 import { FileGlyph } from "./file-icon";
 import { BrandMark } from "./Brand";
+import { PrivateVaultPanel } from "./PrivateVaultPanel";
 import { listDriveFolder, readDriveFile, searchDrive, type DriveRpc } from "@/lib/cloud/drive";
 import { driveFileBase64, driveFileText, normalizeDriveItems } from "@/lib/cloud/normalize";
 import {
@@ -78,6 +79,7 @@ export function SettingsPanel() {
             </Button>
           </div>
         </section>
+        <PrivateVaultPanel />
         <section>
           <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Transfers</h3>
           {transfers.length === 0 ? (
