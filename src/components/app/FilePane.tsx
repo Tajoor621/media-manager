@@ -12,7 +12,7 @@ import { viewerKind } from "@/lib/files/mime";
 import { formatBytes, formatDate } from "@/lib/files/format";
 import { FOLDER_IDS, ROOT_ID, TRASH_ID, type FileNode, type PlaceId, type ViewerKind } from "@/lib/files/types";
 import { FileGlyph } from "./file-icon";
-import { BrandMark, BrandWordmark } from "./Brand";
+import { LuxuryEmptyState } from "./LuxuryEmptyState";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui";
 import { StorageMeters } from "./Panels";
@@ -255,29 +255,7 @@ function HomeDashboard() {
 }
 
 function Empty({ search, place }: { search: string; place: string }) {
-  const copy =
-    search
-      ? `No matches for “${search}”.`
-      : place === "videos"
-        ? "No videos yet. Drop an MP4 or WebM here."
-        : place === "photos"
-          ? "No photos yet. Upload a JPEG, PNG, or WebP."
-          : place === "music"
-            ? "No audio yet. Drop an MP3, WAV, or FLAC."
-            : place === "downloads"
-              ? "Downloads is empty. Import from a device folder or the cloud."
-              : place === "trash"
-                ? "Trash is empty."
-                : place === "favorites"
-                  ? "Star a file to keep it here."
-                  : "This place is empty. Upload, drop files, or open a device folder.";
-  return (
-    <div className="flex h-full min-h-64 flex-col items-center justify-center gap-3 text-center">
-      <BrandMark className="size-20 opacity-90" alt="" />
-      <BrandWordmark compact tagline className="px-4" />
-      <p className="max-w-sm text-sm text-muted">{copy}</p>
-    </div>
-  );
+  return <LuxuryEmptyState place={place} search={search} />;
 }
 
 function activate(node: FileNode, selectMode: boolean, e: MouseEvent | PointerEvent) {
