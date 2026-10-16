@@ -746,7 +746,7 @@ export function DevicePane() {
             key={id}
             size="sm"
             variant="ghost"
-            onClick={grantFolder}
+            onClick={() => grantFolder(id)}
           >
             {label}
           </Button>
