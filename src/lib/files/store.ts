@@ -23,6 +23,7 @@ import { shareOrCopy } from "./share";
 import { seedLibrary, ensureLatestSamples, folderTree } from "./seed";
 import { mimeFromName, viewerKind } from "./mime";
 import {
+  allTreeFiles,
   collectDirectoryFiles,
   ensurePermission,
   filesUnderPath,
@@ -509,7 +510,7 @@ export const useFiles = create<Store>((set, get) => ({
   nodes: Object.fromEntries(folderTree(0).map((n) => [n.id, n])),
   recents: [],
   settings: defaultSettings,
-  tabs: [{ id: "tab-home", title: "Storage", place: "device", folderId: ROOT_ID }],
+  tabs: [{ id: "tab-home", title: "Library", place: "internal", folderId: ROOT_ID }],
   activeTabId: "tab-home",
   selectedIds: [],
   selectMode: false,
@@ -1183,14 +1184,10 @@ export const useFiles = create<Store>((set, get) => ({
     const append = get().deviceMode === "tree" && get().deviceStatus === "ready";
     const mount = mountFileList(files, { append });
     const entries = listTreePath(append ? get().devicePath : "");
-    const indexed = files.map((f) => ({
-      name: f.name,
-      path: (f.webkitRelativePath || f.name).replace(/^\/+/, ""),
-      kind: "file" as const,
-      size: f.size,
-      mime: f.type || mimeFromName(f.name),
-      lastModified: f.lastModified,
-    }));
+    // mountFileList normalizes webkitRelativePath (including shared folder roots).
+    // Reuse those exact keys for browsing and opening files; constructing paths
+    // from raw File objects here made directory imports visible but unreadable.
+    const indexed = allTreeFiles();
     set({
       deviceHandle: null,
       deviceStack: [],
@@ -1199,24 +1196,24 @@ export const useFiles = create<Store>((set, get) => ({
       deviceMode: "tree",
       devicePath: append ? get().devicePath : "",
       deviceRootName: append ? get().deviceRootName : mount.rootName,
-      deviceFileCount: append ? get().deviceFileCount + mount.fileCount : mount.fileCount,
+      deviceFileCount: indexed.length,
       deviceFolders: listTreePath("").filter((e) => e.kind === "folder").length,
-      deviceBytes: append ? get().deviceBytes + mount.totalBytes : mount.totalBytes,
-      deviceIndex: append ? [...get().deviceIndex, ...indexed].slice(0, 80000) : indexed,
+      deviceBytes: indexed.reduce((sum, entry) => sum + entry.size, 0),
+      deviceIndex: indexed.slice(0, 80000),
       deviceVolumes: [
         ...(append ? get().deviceVolumes : []),
         { name: mount.rootName, files: mount.fileCount, folders: 0, bytes: mount.totalBytes },
       ],
       deviceScanning: false,
-      nodes: mergeDeviceNodes(get().nodes, append ? [...get().deviceIndex, ...indexed].slice(0, 80000) : indexed),
+      nodes: mergeDeviceNodes(get().nodes, indexed.slice(0, 80000)),
     });
     get().goPlace("device");
     toast.success(`${mount.fileCount.toLocaleString()} files from ${mount.rootName}`);
     void idb.setMeta("deviceSnapshot", {
       name: mount.rootName,
-      files: append ? get().deviceFileCount : mount.fileCount,
+      files: indexed.length,
       folders: listTreePath("").filter((e) => e.kind === "folder").length,
-      bytes: append ? get().deviceBytes : mount.totalBytes,
+      bytes: indexed.reduce((sum, entry) => sum + entry.size, 0),
     });
     void get().refreshHardware();
   },
