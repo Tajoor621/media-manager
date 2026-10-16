@@ -898,7 +898,7 @@ export function DevicePane() {
           <p className="max-w-md text-sm text-muted">
             Select a supported folder or individual files. Android may block top-level storage folders, and iPhone Safari uses its Files picker. This does not request unrestricted device permission.
           </p>
-          <Button onClick={grantFolder}>
+          <Button onClick={() => grantFolder()}>
             <FolderOpen className="size-4" />
             Choose folder
           </Button>
