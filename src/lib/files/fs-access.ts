@@ -334,13 +334,12 @@ export async function permissionState(
 ): Promise<"granted" | "prompt" | "denied" | "unknown"> {
   const dir = handle as DirHandle;
   try {
-    const rw = await dir.queryPermission?.({ mode: "readwrite" });
-    if (rw === "granted") return "granted";
-    const read = await dir.queryPermission?.({ mode: "read" });
-    if (read === "granted" || read === "prompt" || read === "denied") return read;
-    if (rw === "prompt" || rw === "denied") return rw;
+    // Read-only access is sufficient for browsing and previews.
+    // Asking for readwrite here makes Android deny otherwise valid handles.
+    const state = await dir.queryPermission?.({ mode: "read" });
+    if (state === "granted" || state === "prompt" || state === "denied") return state;
   } catch {
-    /* opaque handle */
+    // Browsers without the Permissions API can still expose usable handles.
   }
   return "unknown";
 }
