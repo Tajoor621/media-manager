@@ -45,15 +45,18 @@ jobs:
       - name: Save first-run screenshots to source for Vercel builds
         run: |
           mkdir -p public/screenshots
+          if [ ! -f public/icon-maskable-512.png ]; then
+            cp dist/icon-maskable-512.png public/icon-maskable-512.png
+          fi
           for file in media-manager-desktop.png media-manager-mobile.png; do
             if [ ! -f "public/screenshots/$file" ]; then
               cp "dist/screenshots/$file" "public/screenshots/$file"
             fi
           done
-          if [ -n "$(git status --porcelain -- public/screenshots)" ]; then
+          if [ -n "$(git status --porcelain -- public/screenshots public/icon-maskable-512.png)" ]; then
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add public/screenshots
+            git add public/screenshots public/icon-maskable-512.png
             git commit -m "chore(pwa): add real install screenshots"
             git push origin HEAD:main
           fi
