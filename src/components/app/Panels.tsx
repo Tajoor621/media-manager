@@ -709,8 +709,8 @@ export function DevicePane() {
       <StorageMeters />
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" onClick={grantFolder}>
-          Allow storage once
+        <Button size="sm" onClick={() => { if (status === "need-gesture") void useFiles.getState().resumeDeviceAccess(); else grantFolder(); }}>
+          {status === "need-gesture" ? "Resume folder access" : "Allow storage once"}
         </Button>
         <Button size="sm" variant="secondary" onClick={grantFolder}>
           Add SD card
@@ -749,7 +749,7 @@ export function DevicePane() {
       </div>
       {!ready && (
         <p className="mt-3 max-w-xl text-xs text-muted">
-          Tap Allow storage once, choose the top Internal storage folder, then Allow. Every folder on that drive opens from then on. Use Add SD card only if a second drive is not inside that folder.
+          Select a folder using the browser picker. Media Manager can read its permitted contents and remember the folder when supported. Android may restrict root folders and ask you to approve access again after restarting the browser. This is not Android system-wide storage permission.
         </p>
       )}
       {volumes.length > 0 && (
