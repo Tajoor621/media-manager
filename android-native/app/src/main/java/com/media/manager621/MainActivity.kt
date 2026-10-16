@@ -193,6 +193,9 @@ class MainActivity : FragmentActivity() {
             }
         }
         button("Android All files access settings") { requestAllFilesAccess() }
+        if (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()) {
+            button("Browse internal storage (native)") { browseInternal(Environment.getExternalStorageDirectory()) }
+        }
         button("Private Vault") { showVault() }
         button("Lock now") { unlocked = false; unlock() }
         val folder = currentFolder
@@ -231,6 +234,85 @@ class MainActivity : FragmentActivity() {
             content.addView(entry)
         }
         if (children.size > 1500) note("Only the first 1,500 entries are displayed. Browse smaller folders to continue.")
+    }
+
+    private fun browseInternal(directory: java.io.File) {
+        if (!unlocked) { unlock(); return }
+        val root = Environment.getExternalStorageDirectory().canonicalFile
+        val folder = directory.canonicalFile
+        if (folder != root && !folder.toPath().startsWith(root.toPath())) {
+            error("Cannot browse outside approved storage"); return
+        }
+        layout("Internal storage • ${folder.name}")
+        button("← Main explorer") { render() }
+        if (folder != root) button("⬆ Parent") { browseInternal(folder.parentFile ?: root) }
+        button("Create new folder") { textDialog("Folder name") { name ->
+            val target = java.io.File(folder, name)
+            if (name.isNotBlank() && !name.contains('/') && target.mkdir()) browseInternal(folder)
+            else error("Cannot create folder")
+        } }
+        val children = try { folder.listFiles()?.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenBy { it.name.lowercase() }) ?: emptyList() }
+        catch (e: Exception) { error("Storage access failed: ${e.message}"); emptyList() }
+        note("${children.size} entries · Android still restricts protected system folders.")
+        for (item in children.take(1500)) {
+            val row = TextView(this).apply {
+                text = (if (item.isDirectory) "📁 " else "📄 ") + item.name
+                textSize = 17f
+                setTextColor(0xfff1e8d8.toInt())
+                setPadding(14, 17, 14, 17)
+                setOnClickListener {
+                    if (item.isDirectory) browseInternal(item) else previewNativeFile(item)
+                }
+                setOnLongClickListener { manageInternal(item, folder); true }
+            }
+            content.addView(row)
+        }
+        if (children.size > 1500) note("Showing first 1,500 entries.")
+    }
+
+    private fun previewNativeFile(file: java.io.File) {
+        // FileProvider creates a temporary content URI for our own viewer.
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val item = DocumentFile.fromSingleUri(this, uri)
+        if (item == null) error("Cannot preview file") else openFile(item)
+    }
+
+    private fun manageInternal(file: java.io.File, parent: java.io.File) {
+        val options = arrayOf("Rename", "Hide / unhide", "Copy into this folder", "Delete")
+        AlertDialog.Builder(this).setTitle(file.name).setItems(options) { _, which ->
+            when (which) {
+                0, 1 -> {
+                    val targetName = if (which == 1) {
+                        if (file.name.startsWith(".")) file.name.removePrefix(".") else ".${file.name}"
+                    } else null
+                    val action: (String) -> Unit = { name ->
+                        val dest = java.io.File(parent, name)
+                        if (name.isBlank() || name.contains('/') || dest.exists() || !file.renameTo(dest))
+                            error("Rename denied or name already exists")
+                        else browseInternal(parent)
+                    }
+                    if (targetName != null) action(targetName)
+                    else textDialog("Rename", file.name, action)
+                }
+                2 -> {
+                    if (file.isDirectory) error("Folder copy is not supported in this alpha.")
+                    else textDialog("Copy as", "Copy of ${file.name}") { name ->
+                        try {
+                            val dest = java.io.File(parent, name)
+                            require(name.isNotBlank() && !name.contains('/') && !dest.exists())
+                            file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
+                            browseInternal(parent)
+                        } catch (e: Exception) { error("Copy failed: ${e.message}") }
+                    }
+                }
+                3 -> AlertDialog.Builder(this).setTitle("Delete permanently?")
+                    .setMessage("This removes the selected file or empty folder from device storage.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("Delete") { _, _ ->
+                        if (file.delete()) browseInternal(parent) else error("Delete denied; nonempty folders cannot be deleted here")
+                    }.show()
+            }
+        }.show()
     }
 
     private fun requestAllFilesAccess() {
