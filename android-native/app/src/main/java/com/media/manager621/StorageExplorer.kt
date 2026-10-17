@@ -51,7 +51,6 @@ internal fun MainActivity.render() {
                 }
             }
             button("Private Vault") { showVault() }
-        button("Security & app lock") { showSecuritySettings() }
             button("Installed apps") { showInstalledApps() }
             button("Security & app lock") { showSecuritySettings() }
             val granted = currentFolder
@@ -95,9 +94,20 @@ internal fun MainActivity.render() {
                 render()
             } catch (e: Exception) { error(e.message ?: "Cannot create folder") }
         } }
-        val children = try { folder.listFiles().sortedWith(compareByDescending<DocumentFile> { it.isDirectory }.thenBy { it.name?.lowercase() }) }
-        catch (e: Exception) { error("Cannot list folder: ${e.message}"); emptyList() }
-        note("${children.size} items. Tap a file to open; long-press to manage.")
+        val generation = listingGeneration
+        note("Loading selected folder…")
+        listingExecutor.execute {
+            val children = try {
+                folder.listFiles().sortedWith(compareByDescending<DocumentFile> { it.isDirectory }.thenBy { it.name?.lowercase() })
+            } catch (e: Exception) {
+                Log.e("MM621", "SAF folder listing failed", e)
+                runOnUiThread { if (listingGeneration == generation && !isFinishing) error("Cannot list folder: ${e.message}") }
+                emptyList()
+            }
+            Log.d("MM621", "SAF listing: ${children.size} items")
+            runOnUiThread {
+                if (listingGeneration != generation || isFinishing || isDestroyed) return@runOnUiThread
+                note("${children.size} items. Tap a file to open; long-press to manage.")
         for (item in children.take(1500)) {
             val name = item.name ?: "(unnamed)"
             val entry = TextView(this).apply {
@@ -114,6 +124,8 @@ internal fun MainActivity.render() {
             content.addView(entry)
         }
         if (children.size > 1500) note("Only the first 1,500 entries are displayed. Browse smaller folders to continue.")
+            }
+        }
     }
 
 
@@ -139,7 +151,8 @@ internal fun MainActivity.browseInternal(directory: java.io.File) {
         note("Internal shared storage · ${formatSize(capacity - available)} used of ${formatSize(capacity)} · ${formatSize(available)} free")
         button("Installed apps (launchable)") { showInstalledApps() }
         button("Private Vault") { showVault() }
-        button("Lock now") { unlocked = false; unlock() }
+        button("Security & app lock") { showSecuritySettings() }
+        if (pin.lockEnabled) button("Lock now") { unlocked = false; unlock() }
         button("Choose another folder / SD card") { folderPicker.launch(null) }
         button("Browse approved folder") { render() }
         button("Search in this folder") { textDialog("Filter names (current folder)", query) { query = it; browseInternal(folder) } }
@@ -154,13 +167,25 @@ internal fun MainActivity.browseInternal(directory: java.io.File) {
             if (name.isNotBlank() && !name.contains('/') && target.mkdir()) browseInternal(folder)
             else error("Cannot create folder")
         } }
-        val children = try {
-            val entries = folder.listFiles()?.asSequence()?.filter { (showHidden || !it.name.startsWith(".")) && it.name.contains(query, ignoreCase = true) }?.toList() ?: emptyList()
-            if (sortBySize) entries.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenByDescending { it.length() })
-            else entries.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenBy { it.name.lowercase() })
-        }
-        catch (e: Exception) { error("Storage access failed: ${e.message}"); emptyList() }
-        note("${children.size} entries · Android still restricts protected system folders.")
+        val generation = listingGeneration
+        val filter = query
+        val hidden = showHidden
+        val sizeSort = sortBySize
+        note("Loading internal storage…")
+        listingExecutor.execute {
+            val children = try {
+                val entries = folder.listFiles()?.asSequence()?.filter { (hidden || !it.name.startsWith(".")) && it.name.contains(filter, ignoreCase = true) }?.toList() ?: emptyList()
+                if (sizeSort) entries.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenByDescending { it.length() })
+                else entries.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenBy { it.name.lowercase() })
+            } catch (e: Exception) {
+                Log.e("MM621", "Internal storage listing failed", e)
+                runOnUiThread { if (listingGeneration == generation && !isFinishing) error("Storage access failed: ${e.message}") }
+                emptyList()
+            }
+            Log.d("MM621", "Internal storage listing: ${children.size} entries")
+            runOnUiThread {
+                if (listingGeneration != generation || isFinishing || isDestroyed) return@runOnUiThread
+                note("${children.size} entries · Android still restricts protected system folders.")
         for (item in children.take(1500)) {
             val row = TextView(this).apply {
                 text = (if (item.isDirectory) "📁 " else "📄 ") + item.name +
@@ -176,6 +201,8 @@ internal fun MainActivity.browseInternal(directory: java.io.File) {
             content.addView(row)
         }
         if (children.size > 1500) note("Showing first 1,500 entries.")
+            }
+        }
         button("Refresh folder") { browseInternal(folder) }
     }
 
@@ -227,6 +254,7 @@ internal fun MainActivity.requestAllFilesAccess() {
             return
         }
         awaitingAllFilesPermission = true
+        Log.d("MM621", "Requesting Android All files access in system Settings")
         try {
             startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:$packageName")))
