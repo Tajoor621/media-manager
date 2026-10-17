@@ -43,7 +43,7 @@ internal fun MainActivity.render() {
             }
             button("2. Choose a folder instead") { folderPicker.launch(null) }
             button("Open previously approved folder") {
-                val saved = getSharedPreferences("mm621-folders", MODE_PRIVATE).getString("last", null)
+                val saved = getSharedPreferences("mm621-folders", android.content.Context.MODE_PRIVATE).getString("last", null)
                 if (saved == null) error("No approved folder is saved yet.")
                 else {
                     currentFolder = DocumentFile.fromTreeUri(this, Uri.parse(saved))
@@ -62,7 +62,7 @@ internal fun MainActivity.render() {
         note("File explorer and encrypted vault. Android controls storage approval; restricted system folders remain protected.")
         button("Choose / connect device folder") { folderPicker.launch(null) }
         button("Open previously granted folder") {
-            val saved = getSharedPreferences("mm621-folders", MODE_PRIVATE).getString("last", null)
+            val saved = getSharedPreferences("mm621-folders", android.content.Context.MODE_PRIVATE).getString("last", null)
             if (saved == null) error("No previously selected folder")
             else {
                 currentFolder = DocumentFile.fromTreeUri(this, Uri.parse(saved))
