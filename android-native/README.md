@@ -24,6 +24,42 @@ The installed-apps view shows **launchable apps visible to Android's package man
 - Audio/video/image/text preview uses Android's native viewers within the app. Some formats and editing capabilities are not supported.
 - This is an **alpha**: requires Android device testing and hardening before a production security claim.
 
+## Troubleshooting — App won't open
+
+**Use the native APK:** Open [Build native Android debug APK](../.github/workflows/android-native.yml) in GitHub Actions, choose the latest **successful** run, download `media-manager-621-native-debug-apk`, extract the archive and install `app-debug.apk`. The native APK package is `com.media.manager621`. A **PWABuilder APK** is a web wrapper and cannot provide native all-files storage access.
+
+**Uninstall older test builds when installation fails:** Android requires compatible signing certificates for in-place updates. A locally built APK, an APK from another GitHub Actions runner, and a PWABuilder package can be signed differently. If Android reports `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, back up app-owned files first, uninstall the conflicting installation, then install the new APK. **Uninstalling or clearing app data deletes app-private Vault content and its Keystore key; encrypted copies may become unrecoverable.** Never uninstall until needed data is exported or safely backed up.
+
+**Check Android version and permissions:** The project supports Android 8.0+ (`minSdk 26`), targets API 35, and needs real-device testing across Android 8–16. Android 11+ uses Settings → Special app access → All files access for the optional internal shared-storage explorer. On Android 8–10 use the system folder picker. Protected system folders remain inaccessible.
+
+**Capture a startup crash log:** Enable Developer options and USB debugging on your own test phone, connect to a computer with Android SDK Platform Tools, then run:
+
+```bash
+adb devices
+adb logcat -c
+adb shell am force-stop com.media.manager621
+adb shell monkey -p com.media.manager621 1
+adb logcat -d -v time -s AndroidRuntime:E MM621:D > media-manager-launch.log
+```
+
+If the app is not installed, use `adb install -r app-debug.apk` and read the exact error. Share the relevant exception and stack trace from the log, **after removing personal paths, file names and other private data**. Android Studio's Logcat view can filter by `com.media.manager621` and `MM621`.
+
+**If the app opens but no files appear:** Approve All files access on Android 11+ or choose a folder using the Storage Access Framework picker. The first screen now explains the permission process. The app's lock is **off by default**; optional passwords can contain 1–64 characters, and supported biometric-only locking is available from Security & app lock.
+
+**Build troubleshooting:** Use JDK 17, Android SDK Platform 35, Gradle 8.10.2+ and AGP 8.7.3. GitHub Actions builds `app-debug.apk` with a pinned Gradle setup. A successful build does not replace a launch test on physical devices.
+
+## Source organization
+
+- `MainActivity.kt`: entry, lifecycle, basic navigation and startup recovery dialog.
+- `StorageExplorer.kt`: SAF and internal storage browsing, folder listings and storage permissions.
+- `FileOperations.kt`: file management, previews, rename, move/copy and ZIP operations.
+- `SecurityScreen.kt`: optional password/biometric app lock settings and unlock.
+- `VaultScreen.kt`: encrypted vault import, listing, preview and delete UI.
+- `Vault.kt` and `PinSecurity.kt`: Keystore encryption and password verification.
+- `res/values/themes.xml`, `res/values/colors.xml`, `res/mipmap-anydpi-v26/`: Material 3 theme and adaptive launcher icon.
+
+Folder listings and ZIP archive operations are scheduled off the main UI thread to reduce freezes. Startup exceptions are logged under `MM621` and displayed using a recovery dialog when Android can render the UI.
+
 ## Web / iPhone
 
 The existing GitHub Pages PWA remains the iPhone and web edition. iOS web apps cannot access the whole filesystem; use authorized imports and in-app library/vault features when implemented for web. Native Android-only features cannot be silently added to an iPhone PWA.
