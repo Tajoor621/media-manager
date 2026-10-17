@@ -6,6 +6,12 @@ This is a **separate native Android source project**, not the PWABuilder Trusted
 
 Use Android Studio (JDK 17, Android SDK 35), open `android-native/`, sync Gradle and build `app` debug. The CI workflow builds a debug APK artifact for testing. The APK is not signed for Play Store distribution.
 
+## Native navigation update (X-plore-style goal)
+
+On Android 11+, unlock the native app, choose **Grant broad storage access (Android Settings)** and explicitly enable **Allow access to manage all files**. Return to the app. It now automatically opens **Internal shared storage** with a directory list, used/free storage meter, Private Vault and an **Installed apps (launchable)** view. Subsequent unlocks open internal shared storage automatically while the permission is retained. SD cards or provider-specific document trees may still require separate user-approved SAF access.
+
+The installed-apps view shows **launchable apps visible to Android's package manager**, not every system package. It links to Android App Info without accessing other apps' private data. Android continues to protect certain directories even after All files access is granted.
+
 ## Permissions and boundaries
 
 - **Choose folder** uses `ACTION_OPEN_DOCUMENT_TREE`, takes persistable read/write URI grants and browses the approved tree.
