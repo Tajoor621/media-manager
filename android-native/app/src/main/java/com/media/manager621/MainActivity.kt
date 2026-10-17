@@ -213,6 +213,7 @@ class MainActivity : FragmentActivity() {
         if (hasAllFilesAccess()) {
             button("Browse internal storage (native)") { browseInternal(Environment.getExternalStorageDirectory()) }
         }
+        button("Installed apps (launchable)") { showInstalledApps() }
         button("Private Vault") { showVault() }
         button("Lock now") { unlocked = false; unlock() }
         val folder = currentFolder
