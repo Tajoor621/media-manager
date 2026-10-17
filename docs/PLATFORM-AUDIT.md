@@ -58,3 +58,50 @@ This is a source-level and CI audit, not a certification of every line or a subs
 - A guaranteed PWABuilder score or Play Store approval.
 
 The PWA's local file manager can be functional without those capabilities. A native Android alpha has now been implemented and compiled by CI; its runtime behavior, permissions, protected paths, vault UX, and secure login must still be verified on real devices. The iPhone/web app now also includes a locally encrypted Private Vault in Settings.
+
+## X-plore feature-parity audit — 2026-10-17
+
+**Reference:** user-supplied X-plore screenshots and feature requirements. This is a feature-gap comparison, **not** a claim that X-plore source, artwork, branding, or proprietary code has been copied.
+
+### Repository security
+
+- **Main branch is unprotected**: GitHub API returns an empty repository rulesets list. The GitHub connector cannot create branch protection rules. Owner must activate a ruleset under Settings → Rules → Rulesets; target `main`, restrict deletions, block force pushes. Do not require status checks until exact check names and merge workflow are verified.
+- Quality workflow exists: TypeScript check, unit tests, ESLint and browser guard on push and PR. Native debug APK has its own compile workflow. CI passing does not mean feature-complete or device-tested.
+- Branch-based Pages publication and separate native APK are distinct deliverables. A PWA/TWA cannot gain Android's native all-files access.
+
+### Native Android feature matrix
+
+| Feature | Current status | Next acceptance work |
+| --- | --- | --- |
+| Native internal shared storage, browse files/folders, storage meter | Implemented in source after user-approved All files access | Test on Android 11–16; protected paths still blocked |
+| SAF folder selection, persisted grants | Implemented | Test removable SD/USB provider behavior |
+| Installed apps | Launchable app names, package IDs and App Info link | Detailed app metadata, user/system filters and permitted package export |
+| File preview | Native image/audio/video and small UTF-8 text | PDF, archives, large media, subtitles, thumbnails, playback resume |
+| File rename, hide/unhide, folder creation, file delete | Implemented | Multi-select and undo/trash |
+| File/folder copy or move between internal-storage directories | Added native source | Large-tree progress/cancel, storage-space preflight, error recovery |
+| Folder search, sort, hidden-files toggle, file details | Added native source | Recursive search, filters, saved views, thumbnails |
+| ZIP creation and extraction | Added native source with ZIP-slip path checks, entry and extraction-size limits | Progress/cancel, passwords, additional formats, archive integrity tests |
+| Encrypted vault, PIN and biometric unlock | Present | Security review, recovery/export policy, threat-model tests |
+| Two-pane expandable X-plore-style tree | Not implemented | Independent panes, back stack, tree state |
+| Select one/select all, multi-select batch actions | Not implemented | Selection state, bulk move/copy/delete/share with confirmations |
+| Disk map, storage analyzer, duplicate finder | Not implemented | Scanner, caching, safe read-only analysis |
+| FTP/SFTP/SMB/WebDAV and Wi-Fi server | Not implemented | Authenticated servers, network hardening, TLS and local-network UX |
+| Cloud storage connectors in native app | Not implemented | Per-provider OAuth and offline cache |
+| Root explorer | Not implemented | Do not bypass Android protections; optional legitimate root handling would require explicit privileged environment |
+| APK management, install/uninstall | Not implemented | System-mediated APK install/uninstall; no silent installs |
+| Trash/recycle bin, restore, secure deletion | Not implemented | Transactional trash with restore and retention |
+| Batch archive formats (7z/RAR/TAR), encryption | Not implemented | Licensed libraries, test archives, memory controls |
+| Bluetooth, Wi-Fi Direct and LAN transfers | Not implemented | Secure pairing and transport integration |
+| Photo editor, document editor, full media player | Partial | Dedicated editor/player modules |
+
+### Important reliability and security risks
+
+1. **Large file operations:** copy and ZIP creation still run synchronously on the UI thread in the alpha; implement background worker, cancellation, and progress before production.
+2. **Partial copies:** a failed copy may leave a partial destination; implement temp-file/atomic-rename or cleanup and verify before removing sources.
+3. **File permissions:** `MANAGE_EXTERNAL_STORAGE` is not universal access; protected `Android/data`, `Android/obb`, other apps' private data and root paths remain restricted. Play Store approval for broad storage is policy-dependent.
+4. **Native release readiness:** Debug APK builds are not signed production releases. Device compatibility, runtime behavior, large folders, battery use and accessibility have not been independently verified.
+5. **PWA and native UX diverge:** source is currently two separate implementations; parity requires a defined shared feature specification and per-platform tests.
+6. **Performance:** directory listing renders at most 1,500 rows and has no recycler virtualization; large folders need a `RecyclerView` or Compose lazy list.
+7. **User experience:** the native alpha uses basic Android buttons and lists, not the desired polished X-plore-inspired black/gold dual-pane layout.
+
+**Status:** Feature work is ongoing. A successful CI compile verifies source buildability only; it does not establish that all X-plore features are cloned or that Android/iPhone restrictions have been removed.
