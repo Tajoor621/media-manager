@@ -37,6 +37,7 @@ class MainActivity : FragmentActivity() {
     private var unlocked = false
     private var backgroundAt = 0L
     private var audio: MediaPlayer? = null
+    private var awaitingAllFilesPermission = false
 
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -79,6 +80,14 @@ class MainActivity : FragmentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        if (awaitingAllFilesPermission) {
+            awaitingAllFilesPermission = false
+            if (unlocked && hasAllFilesAccess()) {
+                browseInternal(Environment.getExternalStorageDirectory())
+                return
+            }
+            if (unlocked) toast("Storage access not granted. You can still select individual folders.")
+        }
         if (pin.configured && unlocked && backgroundAt > 0 &&
             System.currentTimeMillis() - backgroundAt > 30_000L) {
             unlocked = false
@@ -142,7 +151,7 @@ class MainActivity : FragmentActivity() {
             try {
                 pin.setPin(a)
                 unlocked = true
-                render()
+                openHome()
             } catch (e: Exception) { error(e.message ?: "Invalid PIN") }
         }
     }
@@ -153,7 +162,7 @@ class MainActivity : FragmentActivity() {
         button("Unlock with PIN") {
             if (pin.verify(entry.text.toString())) {
                 unlocked = true
-                render()
+                openHome()
             } else error("Incorrect PIN")
         }
         val supported = BiometricManager.from(this).canAuthenticate(
@@ -164,7 +173,7 @@ class MainActivity : FragmentActivity() {
                 object : BiometricPrompt.AuthenticationCallback() {
                     override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                         unlocked = true
-                        render()
+                        openHome()
                     }
                     override fun onAuthenticationError(code: Int, message: CharSequence) {
                         toast("Biometric unlock cancelled: $message")
@@ -179,6 +188,14 @@ class MainActivity : FragmentActivity() {
             )
         }
     }
+    private fun hasAllFilesAccess(): Boolean =
+        Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
+
+    private fun openHome() {
+        if (!unlocked) { unlock(); return }
+        if (hasAllFilesAccess()) browseInternal(Environment.getExternalStorageDirectory()) else render()
+    }
+
     private fun render() {
         if (!unlocked) { unlock(); return }
         layout("Media Manager 621 • Native")
@@ -192,8 +209,8 @@ class MainActivity : FragmentActivity() {
                 render()
             }
         }
-        button("Android All files access settings") { requestAllFilesAccess() }
-        if (Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()) {
+        button("Grant broad storage access (Android Settings)") { requestAllFilesAccess() }
+        if (hasAllFilesAccess()) {
             button("Browse internal storage (native)") { browseInternal(Environment.getExternalStorageDirectory()) }
         }
         button("Private Vault") { showVault() }
@@ -236,6 +253,12 @@ class MainActivity : FragmentActivity() {
         if (children.size > 1500) note("Only the first 1,500 entries are displayed. Browse smaller folders to continue.")
     }
 
+    private fun formatSize(bytes: Long): String = when {
+        bytes >= 1_073_741_824 -> "%.1f GB".format(bytes.toDouble() / 1_073_741_824)
+        bytes >= 1_048_576 -> "%.1f MB".format(bytes.toDouble() / 1_048_576)
+        else -> "$bytes B"
+    }
+
     private fun browseInternal(directory: java.io.File) {
         if (!unlocked) { unlock(); return }
         val root = Environment.getExternalStorageDirectory().canonicalFile
@@ -243,8 +266,17 @@ class MainActivity : FragmentActivity() {
         if (folder != root && !folder.toPath().startsWith(root.toPath())) {
             error("Cannot browse outside approved storage"); return
         }
+        if (!hasAllFilesAccess()) { render(); return }
         layout("Internal storage • ${folder.name}")
-        button("← Main explorer") { render() }
+        val stat = android.os.StatFs(root.path)
+        val capacity = stat.totalBytes
+        val available = stat.availableBytes
+        note("Internal shared storage · ${formatSize(capacity - available)} used of ${formatSize(capacity)} · ${formatSize(available)} free")
+        button("Installed apps (launchable)") { showInstalledApps() }
+        button("Private Vault") { showVault() }
+        button("Lock now") { unlocked = false; unlock() }
+        button("Choose another folder / SD card") { folderPicker.launch(null) }
+        button("Browse approved folder") { render() }
         if (folder != root) button("⬆ Parent") { browseInternal(folder.parentFile ?: root) }
         button("Create new folder") { textDialog("Folder name") { name ->
             val target = java.io.File(folder, name)
@@ -276,6 +308,32 @@ class MainActivity : FragmentActivity() {
         val mime = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
         openFile(uri, file.name, mime, file.length())
+    }
+
+    private fun showInstalledApps() {
+        if (!unlocked) { unlock(); return }
+        layout("Installed apps • launchable")
+        button("← Internal storage") { openHome() }
+        note("Shows launchable apps visible to Android's package manager. Hidden, system-only and non-launchable packages may not appear. App-private data is not accessible.")
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val pm = packageManager
+        val apps = pm.queryIntentActivities(intent, 0)
+            .distinctBy { it.activityInfo.packageName }
+            .sortedBy { it.loadLabel(pm).toString().lowercase() }
+        note("${apps.size} visible apps")
+        for (app in apps) {
+            val pkg = app.activityInfo.packageName
+            val label = app.loadLabel(pm).toString()
+            button("$label · $pkg") {
+                AlertDialog.Builder(this).setTitle(label)
+                    .setMessage("Package: $pkg\\nManage this app through Android's App Info screen.")
+                    .setNegativeButton("Cancel", null)
+                    .setPositiveButton("App info") { _, _ ->
+                        startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                            Uri.parse("package:$pkg")))
+                    }.show()
+            }
+        }
     }
 
     private fun manageInternal(file: java.io.File, parent: java.io.File) {
@@ -322,14 +380,16 @@ class MainActivity : FragmentActivity() {
             return
         }
         if (Environment.isExternalStorageManager()) {
-            toast("Android reports All files access is granted. Use Choose folder to browse in this alpha.")
+            browseInternal(Environment.getExternalStorageDirectory())
             return
         }
+        awaitingAllFilesPermission = true
         try {
             startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:$packageName")))
         } catch (_: Exception) {
-            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            try { startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) }
+            catch (e: Exception) { awaitingAllFilesPermission = false; error("Cannot open storage settings: ${e.message}") }
         }
     }
 
