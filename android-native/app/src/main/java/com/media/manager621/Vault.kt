@@ -2,6 +2,7 @@ package com.media.manager621
 
 import android.content.Context
 import android.net.Uri
+import android.util.Log
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import java.io.File
@@ -20,7 +21,8 @@ class Vault(private val context: Context) {
 
     private fun key(): java.security.Key {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
-        ks.getKey(alias, null)?.let { return it }
+        ks.getKey(alias, null)?.let { Log.d("MM621", "Existing vault key available"); return it }
+        Log.d("MM621", "Generating device-protected vault encryption key")
         val gen = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
         gen.init(
             KeyGenParameterSpec.Builder(
@@ -32,7 +34,7 @@ class Vault(private val context: Context) {
                 .setKeySize(256)
                 .build(),
         )
-        return gen.generateKey()
+        return gen.generateKey().also { Log.d("MM621", "Vault encryption key generated") }
     }
 
     fun import(uri: Uri, originalName: String): String {
