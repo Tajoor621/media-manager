@@ -1,100 +1,119 @@
 # Media Manager 621
 
-An offline-first, black-and-gold media and file library for desktop, Android, and iPhone. Built with React 19, TypeScript, TanStack Router/Start, Vite 8, Tailwind CSS 4, Zustand, and IndexedDB.
+**An offline-first media library and file-management platform for Android, iPhone, iPad, and the web.**
 
-**Live iPhone/Android/desktop PWA:** https://tajoor621.github.io/media-manager/  
-**PWABuilder packaging and manifest checks:** https://www.pwabuilder.com/  
-**GitHub Actions:** https://github.com/Tajoor621/media-manager/actions  
-**Repository:** https://github.com/Tajoor621/media-manager
+[Launch Web App](https://tajoor621.github.io/media-manager/) · [Android Source](android-native/) · [iOS Source](ios-native/) · [Build Status](../../actions) · [Technical Audit](docs/PLATFORM-AUDIT.md)
 
-## What works
+Media Manager 621 brings personal files, photos, videos, music, and documents into a single organized workspace. Its interface uses a distinctive dark-and-gold design, with platform-specific applications built around the storage and security capabilities of each operating system.
 
-| Feature | GitHub Pages PWA | Android PWA / PWABuilder TWA | iPhone Safari / Home Screen |
+The project includes a browser-based Progressive Web App (PWA), a native Android implementation, and a native SwiftUI iOS implementation. **These are separate application builds:** installing the PWA or a PWABuilder APK does not install the native Android file manager.
+
+> **Development status:** The web app is deployed. The Android and iOS applications are in active **alpha development**. Features listed below reflect implemented source code, not a guarantee of successful operation on every device. The native apps are not yet production-certified or equivalent to a mature system file manager.
+
+## Product capabilities
+
+### Personal file library
+
+- Import selected photos, videos, music, documents, and other supported files.
+- Organize imported content into folders and browse it inside Media Manager.
+- Search, sort, and inspect files; manage supported library items using rename, copy, move, delete, favorites, and other available actions.
+- Preview supported image, audio, video, PDF, and text formats without leaving the application when the platform supports them.
+- Share or export files through the operating system's supported sharing interfaces.
+- Keep the web app shell available offline after its initial successful load, subject to browser storage policies.
+
+### Media viewing and playback
+
+- Open supported photos and documents in an integrated viewer.
+- Play supported audio and video formats using the device's browser or native media frameworks.
+- Edit small text documents where the relevant editor is available.
+- Playback formats and capabilities depend on the platform; unsupported codecs may require another application.
+
+### Privacy and local storage
+
+- Local-first file organization; basic file browsing does not require a user account or paid API.
+- Encrypted **Private Vault** copies: Web Crypto in the PWA, Android Keystore-based encryption in the native Android alpha, and CryptoKit/Keychain-based encryption in the native iOS alpha.
+- Platform-specific PIN, biometric, or device-owner authentication where implemented.
+- File hiding by name is **not encryption**. Vault copies are separate from original files, which remain in their existing locations unless explicitly managed.
+- Local data may be lost if app data is cleared, an app is uninstalled, a browser evicts storage, or encryption keys are lost. Keep independent backups.
+
+## Choose your platform
+
+| Capability | Web / Home Screen PWA | Native Android alpha | Native iOS alpha |
 | --- | --- | --- | --- |
-| Local library: import, folders, rename, copy, move, trash, favorites, search | Yes | Yes | Yes |
-| Photos, video, audio, PDF, text, ZIP, SQLite and hex preview | Browser-supported formats | Browser-supported formats | Browser-supported formats |
-| Offline app shell and previously cached assets | Yes, after first online visit | Yes, after first online visit | Subject to Safari storage and cache policies |
-| Select individual photos and files | Yes | Via Android file picker | Via iOS Files / photo picker |
-| Select a directory of files | Supported browser picker required | Device/browser dependent; may be blocked in TWA | Not reliable; use individual file selection |
-| Reopen previously selected directory without prompting | Browser dependent | Browser dependent | Not available as unrestricted directory access |
-| Unrestricted Android storage / MANAGE_EXTERNAL_STORAGE | **No** | **No: requires separate native Android implementation and OS approval** | Not applicable |
-| Google Drive connector | Needs compatible hosted backend/connector | Same | Same |
-| Nearby/WebRTC signaling | Needs compatible hosted backend | Same | Same |
+| Installable app-like interface | Yes | Yes, via APK | Yes, after Xcode signing |
+| Local personal library | Yes | SAF-selected folders and internal shared-storage explorer | App-owned Documents library |
+| Device file import | Browser file/folder picker | Android Storage Access Framework | Native Files and Photos pickers |
+| Browse shared internal storage without choosing each folder | No | Android 11+ after explicit **All files access** approval | No |
+| File/folder operations | Implemented for imported library items | Native rename, copy/move, create, delete and hide/unhide foundations | Native create, rename, delete, search and favorites foundations |
+| Media preview and playback | Browser-supported formats | Native supported image/audio/video/text | Quick Look, AVPlayer and text editor |
+| Private encrypted copies | Browser IndexedDB vault | Android Keystore vault | CryptoKit/Keychain vault |
+| App lock | Browser vault passphrase | PIN and optional biometrics | Face ID, Touch ID or device passcode |
+| Offline operation | Cached web shell and stored local files | Native local functionality | Native local functionality |
+| Maturity | Deployed PWA; device-dependent | Alpha; physical-device acceptance pending | Alpha; physical-device acceptance pending |
 
-**A PWABuilder APK is normally a Trusted Web Activity (TWA) wrapper of the live HTTPS site.** It does not turn JavaScript's folder picker into Android's system-wide storage permission. Android may prohibit selection of the storage root or protected folders. This app **never bypasses Android/iOS sandboxing**.
+**Storage access is controlled by the operating system.** No edition can bypass protected system folders or another app's private sandbox. In particular, iOS does not offer Android-style All files access, and the web app cannot silently enumerate a phone's filesystem.
 
-## In-app media workflow and accurate storage meters
+## Web application
 
-Media Manager is intended to be the place where selected or imported media is browsed, previewed, played, edited when a compatible editor is implemented, organized, and shared. The operating system's Files/Photos picker is used **only to authorize or import files** where required; it cannot be replaced with an unrestricted web-only scanner.
+**Live:** https://tajoor621.github.io/media-manager/
 
-The dashboard shows three separate metrics: **RAM information** (browser-reported estimate, if available), **App storage** (browser-origin usage/quota, not total ROM), and **Selected device files** (files the user explicitly allowed the app to read). CPU cores are not RAM; indexed file size is not phone storage capacity. None of these cards is a drive to navigate.
+The web edition is a responsive PWA built with React, TypeScript, Vite, Tailwind CSS, Zustand, and IndexedDB. It supports local file import, an in-app library, file viewers, and a web encrypted vault. It can be added to a phone's Home Screen for a standalone-style launch.
 
-An internal viewer does not guarantee an internal editor for every file type. Unsupported formats, protected files, and native share sheets may still require OS assistance. Sharing to another app necessarily invokes a platform share interface.
+**Install on iPhone:** Open the live URL in Safari, then use **Share → Add to Home Screen**. Open the installed icon and import content through the app's library controls. Imported content is stored within the web app's storage; it is not a mirror of the iPhone's entire Files or Photos libraries.
 
-## First run and phone storage
+**Install on Android:** Open the live URL in Chrome and use **Install app** or **Add to Home Screen**. A PWABuilder package uses web capabilities and **does not** acquire native file-manager permissions.
 
-The app opens in **Library** so the user can immediately import, preview, organize, and share files without granting storage permissions.
+**Using the library:** Import files, open the Library, select an item to preview or play it, and use available item actions to organize, share, or export it. Browser storage can be cleared or evicted; export important files to a separate location.
 
-1. Open **Device storage** to browse external files.
-2. Tap **Choose a device folder** or **Select folder**. On supported desktop browsers this uses the File System Access API; on phones it prefers a user-initiated file/directory input.
-3. Select a folder the OS allows. On phones where directory selection is unavailable, tap **Photos & files** to select individual files instead.
-4. Files selected through a picker are accessible for the current browser session. A stored directory handle may be resumed on browsers that support it; it is not a permanent Android permission.
-5. To keep copies inside Media Manager, use **Copy into library** (up to 400 files per operation), or upload selected files into the Library. Browser IndexedDB data can be lost if site data is cleared or the OS evicts storage. Back up important files elsewhere.
+## Native Android application
 
-**If the APK appears stuck on a permission screen:** open Library from the bottom navigation; try Photos & files; test the live URL in Chrome. If Chrome works but the installed APK does not, the wrapper's picker/permission behavior is different. Regenerate the TWA package after publishing updates; the web UI updates over HTTPS, but changes to native permissions require rebuilding the APK/AAB.
+**Source:** [`android-native/`](android-native/) · **Build workflow:** [Native Android debug APK](.github/workflows/android-native.yml)
 
-### Android install and APK
+The native Android edition is written in Kotlin and uses Android's Storage Access Framework (SAF). On Android 11 and later it can also request the special **All files access** permission for shared internal storage. This permission must be approved by the user in Android Settings.
 
-- Open the live URL in current Chrome on Android; choose **Install app** or **Add to Home screen** from Chrome's menu.
-- To create an APK/AAB, paste the live URL into [PWABuilder](https://www.pwabuilder.com/), check the manifest, and package for Android.
-- A TWA may require **Digital Asset Links** verification for a fullscreen trusted launch. Supply the signing certificate SHA-256 fingerprint and package name to generate the correct `/.well-known/assetlinks.json` at the **origin root**. GitHub Pages project sites cannot independently control the `https://tajoor621.github.io/.well-known/` origin-root path from this `/media-manager/` repository. Use a domain/origin you control, or the appropriate Android packaging/browser fallback. **Do not assume verification is configured.**
-- This repository now also includes **`android-native/`**, a separate Kotlin Android app (alpha) with Android's Storage Access Framework, optional All files access Settings link, file browser, hide/unhide by renaming, native image/audio/video/text previews, local PIN/biometric app lock and AES-GCM encrypted private copies. It is **not the same binary as the PWABuilder TWA**. The native explorer browses user-approved SAF folders and offers a separate internal-storage explorer after Android approves special All files access; protected directories remain restricted. See [Native Android build and limitations](android-native/README.md) and the [native APK build workflow](.github/workflows/android-native.yml).
-- For a true native Android file manager, implement a separate Android bridge using the Storage Access Framework, persistable URI grants where permitted, runtime media permissions, and user-visible permission rationale. Special all-files access is restricted by Android/Play policy.
+### Install and open device files
 
-### iPhone / iPad
+1. Open [GitHub Actions](../../actions/workflows/android-native.yml) and select the latest **successful** native Android build.
+2. Download the **`media-manager-621-native-debug-apk`** artifact, extract the ZIP, and install **`app-debug.apk`** on your Android test device.
+3. Open **Media Manager 621 — Native**, complete the initial PIN setup, and select **Enable internal storage access**.
+4. In Android Settings, explicitly allow **Manage all files** for Media Manager 621, then return to the app.
+5. When permission is active, the app should open the **shared internal storage explorer** automatically. Tap a folder to browse it; tap a supported file to open it; long-press an item for file actions.
+6. If broad access is unavailable, use **Choose a folder** to authorize a supported directory through Android's system picker.
 
-1. Open the live URL in **Safari**.
-2. Tap **Share → Add to Home Screen** (or the equivalent menu in your iOS version).
-3. Open Media Manager from its Home Screen icon.
-4. Use **Library → Upload** or **Device storage → Photos & files** to select files from Files or Photos. Safari does not offer unrestricted iPhone file-system access to a PWA.
-5. Test online and offline after the first load; offline cached assets do not guarantee persistent copies of all imported data.
+The native Android application includes source-level implementations for storage capacity information, a file/folder browser, name search, sorting, hidden-file toggle, details, copy/move, ZIP creation/extraction, selected-file previews, launchable-app listing, and encrypted private copies. **These functions remain alpha and must be validated on physical devices.** Large file operations and archive handling require further performance and reliability work.
 
-## Native iPhone / iPad (SwiftUI alpha)
+**Troubleshooting: no files shown**
 
-A **separate genuine iOS application** is now being developed in [`ios-native/`](ios-native/README.md). It uses SwiftUI (not a WKWebView wrapper), native Files and Photos import, Quick Look, AVPlayer, sandboxed library management, device-owner authentication and CryptoKit/Keychain encrypted vault copies. The iOS simulator build is checked by [GitHub Actions](.github/workflows/ios-native.yml).
+- Confirm you installed the **native Kotlin APK**, not a PWABuilder/TWA APK. They are different packages and do not have the same storage access.
+- Check **Android Settings → Apps → Special app access → All files access** (wording varies by Android version), then return to Media Manager.
+- If access is denied or unsupported, select a permitted folder using the SAF picker.
+- Android may still restrict `Android/data`, `Android/obb`, root/system paths, and other apps' private files.
+- A successful CI build proves compilation, **not** that storage browsing works on your phone. If the screen remains empty, record the Android version, exact APK source/build, and what happens when you select storage access so the failure can be reproduced.
 
-The native iOS app is **not** delivered by the GitHub Pages PWA URL; installing on a physical iPhone requires Xcode signing/provisioning and device testing. The web app remains available as an independent Safari Add to Home Screen experience. On iPhone its Device Storage tab now focuses on importing files into the local library rather than implying whole-phone permissions.
+Read the [Android development and permission notes](android-native/README.md).
 
-## Private Vault on iPhone and web
+## Native iPhone and iPad application
 
-Settings now includes a **Private Vault** for locally encrypted copies. It uses Web Crypto PBKDF2 (310,000 SHA-256 iterations) to derive an AES-256-GCM key from a passphrase of at least 12 characters. Files and filenames are encrypted in browser IndexedDB; the app locks the vault when hidden. Import supports up to 20 MB per file, with manual export. Originals remain unchanged. This is not a whole-phone hide/unhide feature. Browser data eviction, forgotten passphrases, and unbacked-up data can result in permanent loss.
+**Source:** [`ios-native/`](ios-native/) · **Build workflow:** [iOS simulator compilation](.github/workflows/ios-native.yml)
 
-## Features and structure
+The native iOS edition uses SwiftUI, native Files and Photos pickers, Quick Look previews, AVPlayer playback, an app-owned document library, and a CryptoKit/Keychain vault foundation. Its native navigation, file operations, and authentication are separate from the Safari PWA.
 
-- `src/components/app/AppShell.tsx` — main responsive interface, navigation, library controls, settings, viewer integration, service-worker registration.
-- `src/components/app/Panels.tsx` — device browser, settings, storage meters, optional cloud/nearby panels.
-- `src/lib/files/store.ts` — Zustand library and device state, imports, previews, navigation, persistence.
-- `src/lib/files/fs-access.ts` — browser directory/file picker, selected-file tree, browser handle permissions.
-- `src/lib/files/idb.ts` — IndexedDB metadata and file blobs.
-- `src/lib/files/private-vault.ts` — encrypted browser vault.
-- `src/components/app/PrivateVaultPanel.tsx` — vault controls integrated into Settings.
-- `android-native/` — separate native Android Kotlin alpha and debug APK workflow.
-- `public/manifest.webmanifest` — PWA identity, icons, maskable icon, shortcuts, screenshots, share target.
-- `public/sw.js` — offline caching and web share-target handling.
-- `public/tools/file-workbench.html` — standalone file workbench.
-- `public/screenshots/` — real desktop and mobile UI screenshots.
-- `scripts/capture-pwa-screenshots.mjs` — screenshot and maskable icon generation.
-- `scripts/check-pwa-manifest.mjs` — validates manifest assets and dimensions.
-- `scripts/build-pages.mjs` — static GitHub Pages build.
-- `.github/workflows/pages.yml` — builds `main`, validates and publishes `dist/` to `gh-pages`.
+The project uses **XcodeGen** to generate an Xcode project:
 
-## GitHub Pages deployment
+```bash
+cd ios-native
+brew install xcodegen
+xcodegen generate
+open MediaManager621.xcodeproj
+```
 
-In repository **Settings → Pages**, select **Deploy from a branch**, branch **`gh-pages`**, directory **`/ (root)`**. Do not switch to GitHub Actions source while using the branch-publishing workflow.
+A compatible Mac and Xcode are required. Select your Apple Account's Personal Team in Xcode signing settings to test on a personal iPhone where permitted by Apple's provisioning rules. The GitHub iOS workflow checks simulator compilation; it does **not** produce a signed, installable iPhone IPA.
 
-Each push to `main` runs `npm ci`, builds the PWA, captures genuine screenshots, checks the manifest, and publishes `dist/` to `gh-pages`. GitHub Pages then deploys that branch. The latest deployed build can be checked under **Actions** and **Deployments**. The live URL may lag behind the source branch briefly.
+Read the [iOS build and security notes](ios-native/README.md).
 
-## Local development and verification
+## Development
+
+### Web
 
 Requires Node.js 22 and npm.
 
@@ -105,24 +124,49 @@ npm run typecheck
 npm test
 npm run lint
 npm run build:pages
-node scripts/capture-pwa-screenshots.mjs
-node scripts/check-pwa-manifest.mjs
 ```
 
-Production `npm run build` is for the Node/Vercel server deployment; `npm run build:pages` generates the static site in `dist/`. Server-only connectors (for example Google Drive and Nearby signaling) are **not** automatically functional on GitHub Pages.
+The GitHub Pages deployment is built from the web source and published to the `gh-pages` branch. Some optional cloud or nearby-sharing features require server-side infrastructure and are **not automatically available** on the static GitHub Pages deployment.
 
-## Repository audit and known limitations
+### Android
 
-See [Platform audit and Android/iPhone acceptance matrix](docs/PLATFORM-AUDIT.md) for resolved issues, outstanding native-platform work, and the checks required before claiming full device compatibility.
+Requires JDK 17 and an Android SDK compatible with the project. From `android-native/`:
 
-## Security and data limitations
+```bash
+gradle :app:assembleDebug
+```
 
-- Files are selected by the user. The app cannot silently enumerate all files or protected app directories on Android or iOS.
-- IndexedDB is local to the browser/app origin. Clearing site data can delete the library; importing is not the same as making a device-wide backup.
-- The UI's ROM/device-file measurements describe browser-reported quota or indexed accessible files, **not authoritative total phone storage usage**.
-- Browser APIs, playback codecs, sharing, and offline persistence differ between Chrome, Safari, and Android wrappers.
-- A successful CI build or manifest check does not certify the APK's native permission behavior or a particular PWABuilder score. Validate on real devices.
+GitHub Actions also builds the debug APK and attaches it to the workflow run. This is a development build, not a signed production release.
+
+### iOS
+
+Requires macOS, Xcode, and XcodeGen. Generate the project as shown above, then build with Xcode for a simulator or a properly provisioned personal device.
+
+## Repository layout
+
+```text
+media-manager/
+├── src/                       # React/TypeScript web application
+│   ├── components/app/        # Navigation, library, viewers, vault UI
+│   └── lib/files/             # File state, browser access, IndexedDB, vault
+├── public/                    # PWA manifest, service worker and assets
+├── android-native/            # Native Android Kotlin application
+├── ios-native/                # Native iOS SwiftUI application
+├── docs/                      # Platform audit and technical notes
+├── scripts/                   # Web build and validation utilities
+└── .github/workflows/         # Quality, web, Android and iOS CI
+```
+
+## Roadmap
+
+Development priorities are **reliable storage onboarding**, native-device testing, scalable file lists, batch selection and operations, background copy/move with progress and cancellation, better media playback, stronger vault lifecycle testing, and improved accessibility. More advanced archive, network, and cloud capabilities will be introduced only after their implementations can be validated.
+
+See [the platform audit](docs/PLATFORM-AUDIT.md) for feature gaps and engineering risks.
+
+## Security and platform boundaries
+
+Media Manager operates within Android, iOS, and browser permission models. All files access on Android is a user-approved special permission, **not** unrestricted root access. iOS Files and Photos imports are user-selected, and neither iOS nor a web PWA grants silent access to every device folder. Never use the encrypted vault as the sole copy of irreplaceable files without a tested backup and recovery plan.
 
 ## License
 
-Project maintained by Tajoor621. No open-source license is declared in this repository; all rights remain with their respective owners unless a license is added.
+Copyright © Media Manager 621 contributors. No open-source license is currently declared; use and redistribution rights are reserved unless a license is added.
