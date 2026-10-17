@@ -635,6 +635,84 @@ export function DevicePane() {
     useFiles.getState().goDevicePath(folderPath);
   };
 
+  // A Home Screen iPhone app cannot browse the iOS filesystem like a native Android app.
+  // Make importing to the persistent in-app Library the primary iOS experience.
+  const isIOS = typeof navigator !== "undefined" && /iPad|iPhone|iPod/.test(navigator.userAgent);
+  if (isIOS) {
+    return (
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto px-4 py-5 sm:px-6">
+        <input
+          ref={dirRef}
+          type="file"
+          className="sr-only"
+          multiple
+          onChange={(e) => {
+            const files = e.target.files ? [...e.target.files] : [];
+            e.target.value = "";
+            if (files.length) {
+              void useFiles.getState().ingestFiles(files).then(() => useFiles.getState().goPlace("internal"));
+            }
+          }}
+        />
+        <input
+          ref={filesRef}
+          type="file"
+          className="sr-only"
+          multiple
+          onChange={(e) => {
+            const files = e.target.files ? [...e.target.files] : [];
+            e.target.value = "";
+            if (files.length) {
+              void useFiles.getState().ingestFiles(files).then(() => useFiles.getState().goPlace("internal"));
+            }
+          }}
+        />
+        <input
+          ref={cameraRef}
+          type="file"
+          className="sr-only"
+          accept="image/*,video/*"
+          multiple
+          onChange={(e) => {
+            const files = e.target.files ? [...e.target.files] : [];
+            e.target.value = "";
+            if (files.length) {
+              void useFiles.getState().ingestFiles(files).then(() => useFiles.getState().goPlace("internal"));
+            }
+          }}
+        />
+        <div className="rounded-2xl border border-gold/25 bg-elevated p-5">
+          <div className="mb-2 flex items-center gap-2 text-gold">
+            <FolderOpen className="size-5" />
+            <h2 className="font-display text-lg">Your Personal Media Library</h2>
+          </div>
+          <p className="text-sm leading-relaxed text-muted">
+            Import your photos, videos, music, documents and folders once, then open and organize
+            those copies inside Media Manager. iOS does not permit a web app to scan your entire phone.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button onClick={() => filesRef.current?.click()}>Import files</Button>
+            <Button variant="secondary" onClick={() => cameraRef.current?.click()}>Import photos & videos</Button>
+            <Button variant="secondary" onClick={() => dirRef.current?.click()}>Import folder</Button>
+            <Button variant="secondary" onClick={() => useFiles.getState().goPlace("internal")}>Open My Library</Button>
+          </div>
+          <p className="mt-3 text-xs text-subtle">
+            Imports are private local copies. Export important files regularly: iOS may remove website
+            storage, and Safari and an installed Home Screen app may not share the same library.
+          </p>
+        </div>
+        <StorageMeters />
+        <div className="rounded-xl border border-border bg-card p-4">
+          <h3 className="font-medium text-foreground">For a fully native iPhone experience</h3>
+          <p className="mt-2 text-sm text-muted">
+            A separate SwiftUI iOS edition is under development. It uses native Files and Photos pickers,
+            Quick Look, AVPlayer and device authentication; it is not installed through Safari.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col overflow-auto px-3 py-3 sm:px-5"
