@@ -59,6 +59,12 @@ The app opens in **Library** so the user can immediately import, preview, organi
 4. Use **Library → Upload** or **Device storage → Photos & files** to select files from Files or Photos. Safari does not offer unrestricted iPhone file-system access to a PWA.
 5. Test online and offline after the first load; offline cached assets do not guarantee persistent copies of all imported data.
 
+## Native iPhone / iPad (SwiftUI alpha)
+
+A **separate genuine iOS application** is now being developed in [`ios-native/`](ios-native/README.md). It uses SwiftUI (not a WKWebView wrapper), native Files and Photos import, Quick Look, AVPlayer, sandboxed library management, device-owner authentication and CryptoKit/Keychain encrypted vault copies. The iOS simulator build is checked by [GitHub Actions](.github/workflows/ios-native.yml).
+
+The native iOS app is **not** delivered by the GitHub Pages PWA URL; installing on a physical iPhone requires Xcode signing/provisioning and device testing. The web app remains available as an independent Safari Add to Home Screen experience. On iPhone its Device Storage tab now focuses on importing files into the local library rather than implying whole-phone permissions.
+
 ## Private Vault on iPhone and web
 
 Settings now includes a **Private Vault** for locally encrypted copies. It uses Web Crypto PBKDF2 (310,000 SHA-256 iterations) to derive an AES-256-GCM key from a passphrase of at least 12 characters. Files and filenames are encrypted in browser IndexedDB; the app locks the vault when hidden. Import supports up to 20 MB per file, with manual export. Originals remain unchanged. This is not a whole-phone hide/unhide feature. Browser data eviction, forgotten passphrases, and unbacked-up data can result in permanent loss.
