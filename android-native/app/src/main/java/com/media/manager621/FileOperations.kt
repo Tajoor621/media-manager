@@ -134,6 +134,7 @@ internal fun MainActivity.createZip(source: java.io.File, parent: java.io.File) 
             .setMessage("Compress ${source.name} in this folder. Large files may take time.")
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Create") { _, _ ->
+                Thread {
                 try {
                     java.util.zip.ZipOutputStream(zipFile.outputStream().buffered()).use { zip ->
                         fun add(current: java.io.File, relative: String) {
@@ -152,11 +153,12 @@ internal fun MainActivity.createZip(source: java.io.File, parent: java.io.File) 
                         }
                         add(source, source.name)
                     }
-                    browseInternal(parent)
+                    runOnUiThread { browseInternal(parent) }
                 } catch (e: Exception) {
                     zipFile.delete()
-                    error("ZIP creation failed: ${e.message}")
+                    runOnUiThread { error("ZIP creation failed: ${e.message}") }
                 }
+                }.start()
             }.show()
     }
 
