@@ -136,7 +136,7 @@ class MainActivity : FragmentActivity() {
         }
     }
 
-    private fun layout(title: String) {
+    internal fun layout(title: String) {
         listingGeneration++
         rootLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -156,7 +156,7 @@ class MainActivity : FragmentActivity() {
         rootLayout.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(rootLayout)
     }
-    private fun button(label: String, action: () -> Unit) {
+    internal fun button(label: String, action: () -> Unit) {
         val b = Button(this).apply {
             text = label
             isAllCaps = false
@@ -164,7 +164,7 @@ class MainActivity : FragmentActivity() {
         }
         content.addView(b, LinearLayout.LayoutParams(-1, -2))
     }
-    private fun note(text: String) {
+    internal fun note(text: String) {
         content.addView(TextView(this).apply {
             this.text = text
             textSize = 14f
@@ -172,11 +172,11 @@ class MainActivity : FragmentActivity() {
             setPadding(4, 10, 4, 10)
         })
     }
-    private fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
-    private fun error(text: String) = AlertDialog.Builder(this).setTitle("Media Manager")
+    internal fun toast(text: String) = Toast.makeText(this, text, Toast.LENGTH_LONG).show()
+    internal fun error(text: String) = AlertDialog.Builder(this).setTitle("Media Manager")
         .setMessage(text).setPositiveButton("OK", null).show()
 
-    private fun openHome() {
+    internal fun openHome() {
         if (!unlocked) { unlock(); return }
         if (hasAllFilesAccess()) browseInternal(Environment.getExternalStorageDirectory()) else render()
     }
