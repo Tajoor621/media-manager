@@ -12,13 +12,17 @@ class PinSecurity(context: Context) {
     private val prefs = context.getSharedPreferences("mm621-lock", Context.MODE_PRIVATE)
     private val random = SecureRandom()
     val configured: Boolean get() = prefs.contains("hash")
+    var biometricOnly: Boolean
+        get() = prefs.getBoolean("biometric_only", false)
+        set(value) { prefs.edit().putBoolean("biometric_only", value).apply() }
+    val lockEnabled: Boolean get() = configured || biometricOnly
     private fun derive(pin: CharArray, salt: ByteArray): ByteArray {
         val spec = PBEKeySpec(pin, salt, 210_000, 256)
         return try { SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded }
         finally { spec.clearPassword() }
     }
     fun setPin(pin: String) {
-        require(pin.length in 6..64 && pin.all { it.isDigit() }) { "Use a 6–64 digit PIN" }
+        require(pin.length in 1..64) { "Use 1–64 characters" }
         val salt = ByteArray(32).also { random.nextBytes(it) }
         val hash = derive(pin.toCharArray(), salt)
         prefs.edit()
@@ -26,10 +30,15 @@ class PinSecurity(context: Context) {
             .putString("hash", Base64.encodeToString(hash, Base64.NO_WRAP))
             .apply()
     }
+    fun clearLock() {
+        prefs.edit().remove("hash").remove("salt").putBoolean("biometric_only", false).apply()
+    }
     fun verify(pin: String): Boolean {
         if (!configured) return false
-        val salt = Base64.decode(prefs.getString("salt", ""), Base64.NO_WRAP)
-        val expected = Base64.decode(prefs.getString("hash", ""), Base64.NO_WRAP)
-        return MessageDigest.isEqual(expected, derive(pin.toCharArray(), salt))
+        return try {
+            val salt = Base64.decode(prefs.getString("salt", ""), Base64.NO_WRAP)
+            val expected = Base64.decode(prefs.getString("hash", ""), Base64.NO_WRAP)
+            MessageDigest.isEqual(expected, derive(pin.toCharArray(), salt))
+        } catch (_: Exception) { false }
     }
 }
