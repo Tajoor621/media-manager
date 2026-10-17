@@ -38,6 +38,11 @@ class MainActivity : FragmentActivity() {
     private var backgroundAt = 0L
     private var audio: MediaPlayer? = null
     private var awaitingAllFilesPermission = false
+    private var showHidden = true
+    private var sortBySize = false
+    private var query = ""
+    private var clipboard: java.io.File? = null
+    private var cutClipboard = false
 
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -80,6 +85,13 @@ class MainActivity : FragmentActivity() {
     }
     override fun onResume() {
         super.onResume()
+        if (pin.configured && unlocked && backgroundAt > 0 &&
+            System.currentTimeMillis() - backgroundAt > 30_000L) {
+            awaitingAllFilesPermission = false
+            unlocked = false
+            unlock()
+            return
+        }
         if (awaitingAllFilesPermission) {
             awaitingAllFilesPermission = false
             if (unlocked && hasAllFilesAccess()) {
@@ -87,11 +99,6 @@ class MainActivity : FragmentActivity() {
                 return
             }
             if (unlocked) toast("Storage access not granted. You can still select individual folders.")
-        }
-        if (pin.configured && unlocked && backgroundAt > 0 &&
-            System.currentTimeMillis() - backgroundAt > 30_000L) {
-            unlocked = false
-            unlock()
         }
     }
 
@@ -278,18 +285,29 @@ class MainActivity : FragmentActivity() {
         button("Lock now") { unlocked = false; unlock() }
         button("Choose another folder / SD card") { folderPicker.launch(null) }
         button("Browse approved folder") { render() }
+        button("Search in this folder") { textDialog("Filter names (current folder)", query) { query = it; browseInternal(folder) } }
+        if (query.isNotBlank()) button("Clear search: $query") { query = ""; browseInternal(folder) }
+        button(if (sortBySize) "Sort: size ↓" else "Sort: name A–Z") { sortBySize = !sortBySize; browseInternal(folder) }
+        button(if (showHidden) "Hide dotfiles" else "Show dotfiles") { showHidden = !showHidden; browseInternal(folder) }
+        if (clipboard != null) button("Paste ${if (cutClipboard) "move" else "copy"}: ${clipboard?.name}") { pasteInto(folder) }
+        if (clipboard != null) button("Clear copy/move selection") { clipboard = null; browseInternal(folder) }
         if (folder != root) button("⬆ Parent") { browseInternal(folder.parentFile ?: root) }
         button("Create new folder") { textDialog("Folder name") { name ->
             val target = java.io.File(folder, name)
             if (name.isNotBlank() && !name.contains('/') && target.mkdir()) browseInternal(folder)
             else error("Cannot create folder")
         } }
-        val children = try { folder.listFiles()?.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenBy { it.name.lowercase() }) ?: emptyList() }
+        val children = try {
+            val entries = folder.listFiles()?.asSequence()?.filter { (showHidden || !it.name.startsWith(".")) && it.name.contains(query, ignoreCase = true) }?.toList() ?: emptyList()
+            if (sortBySize) entries.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenByDescending { it.length() })
+            else entries.sortedWith(compareByDescending<java.io.File> { it.isDirectory }.thenBy { it.name.lowercase() })
+        }
         catch (e: Exception) { error("Storage access failed: ${e.message}"); emptyList() }
         note("${children.size} entries · Android still restricts protected system folders.")
         for (item in children.take(1500)) {
             val row = TextView(this).apply {
-                text = (if (item.isDirectory) "📁 " else "📄 ") + item.name
+                text = (if (item.isDirectory) "📁 " else "📄 ") + item.name +
+                    (if (item.isFile) " · ${formatSize(item.length())}" else "")
                 textSize = 17f
                 setTextColor(0xfff1e8d8.toInt())
                 setPadding(14, 17, 14, 17)
@@ -338,11 +356,12 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun manageInternal(file: java.io.File, parent: java.io.File) {
-        val options = arrayOf("Rename", "Hide / unhide", "Copy into this folder", "Delete")
+        val options = arrayOf("Details", "Rename", "Hide / unhide", "Copy to another folder", "Move to another folder", "Copy into this folder", "Create ZIP", "Delete")
         AlertDialog.Builder(this).setTitle(file.name).setItems(options) { _, which ->
             when (which) {
-                0, 1 -> {
-                    val targetName = if (which == 1) {
+                0 -> showNativeDetails(file)
+                1, 2 -> {
+                    val targetName = if (which == 2) {
                         if (file.name.startsWith(".")) file.name.removePrefix(".") else ".${file.name}"
                     } else null
                     val action: (String) -> Unit = { name ->
@@ -354,8 +373,14 @@ class MainActivity : FragmentActivity() {
                     if (targetName != null) action(targetName)
                     else textDialog("Rename", file.name, action)
                 }
-                2 -> {
-                    if (file.isDirectory) error("Folder copy is not supported in this alpha.")
+                3, 4 -> {
+                    clipboard = file
+                    cutClipboard = which == 4
+                    toast("Navigate to a destination folder, then tap Paste.")
+                    browseInternal(parent)
+                }
+                5 -> {
+                    if (file.isDirectory) error("Use Copy to another folder for directory copies.")
                     else textDialog("Copy as", "Copy of ${file.name}") { name ->
                         try {
                             val dest = java.io.File(parent, name)
@@ -365,7 +390,8 @@ class MainActivity : FragmentActivity() {
                         } catch (e: Exception) { error("Copy failed: ${e.message}") }
                     }
                 }
-                3 -> AlertDialog.Builder(this).setTitle("Delete permanently?")
+                6 -> createZip(file, parent)
+                7 -> AlertDialog.Builder(this).setTitle("Delete permanently?")
                     .setMessage("This removes the selected file or empty folder from device storage.")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Delete") { _, _ ->
@@ -373,6 +399,89 @@ class MainActivity : FragmentActivity() {
                     }.show()
             }
         }.show()
+    }
+
+    private fun showNativeDetails(file: java.io.File) {
+        val kind = if (file.isDirectory) "Directory" else "File"
+        val readable = file.canRead()
+        val writable = file.canWrite()
+        val modified = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(file.lastModified()))
+        AlertDialog.Builder(this).setTitle(file.name)
+            .setMessage("Type: $kind\\nPath: ${file.absolutePath}\\nSize: ${formatSize(file.length())}\\nLast modified: $modified\\nReadable: $readable\\nWritable: $writable")
+            .setPositiveButton("OK", null).show()
+    }
+
+    private fun pasteInto(destination: java.io.File) {
+        val source = clipboard ?: return
+        if (!source.exists()) { error("Original no longer exists"); clipboard = null; return }
+        val target = java.io.File(destination, source.name)
+        if (target.exists() || source.canonicalFile == target.canonicalFile ||
+            (source.isDirectory && destination.canonicalFile.toPath().startsWith(source.canonicalFile.toPath()))) {
+            error("Cannot paste: destination exists or is inside source"); return
+        }
+        AlertDialog.Builder(this).setTitle(if (cutClipboard) "Move here?" else "Copy here?")
+            .setMessage("${source.name} → ${destination.absolutePath}")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Continue") { _, _ ->
+                try {
+                    if (cutClipboard && source.renameTo(target)) {
+                        clipboard = null
+                        browseInternal(destination)
+                    } else {
+                        copyNative(source, target)
+                        if (cutClipboard) {
+                            if (!source.deleteRecursively()) error("Copied, but original could not be removed. Remove it manually after checking the copy.")
+                            else clipboard = null
+                        }
+                        browseInternal(destination)
+                    }
+                } catch (e: Exception) { error("Copy/move failed: ${e.message}") }
+            }.show()
+    }
+
+    private fun copyNative(source: java.io.File, target: java.io.File) {
+        if (source.isDirectory) {
+            require(target.mkdir()) { "Cannot create destination directory" }
+            for (child in source.listFiles() ?: throw java.io.IOException("Cannot list source directory")) {
+                copyNative(child, java.io.File(target, child.name))
+            }
+        } else {
+            require(!target.exists()) { "Destination already exists" }
+            source.inputStream().use { input -> target.outputStream().use { input.copyTo(it) } }
+        }
+    }
+
+    private fun createZip(source: java.io.File, parent: java.io.File) {
+        val zipFile = java.io.File(parent, "${source.name}.zip")
+        if (zipFile.exists()) { error("ZIP already exists"); return }
+        AlertDialog.Builder(this).setTitle("Create ZIP?")
+            .setMessage("Compress ${source.name} in this folder. Large files may take time.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Create") { _, _ ->
+                try {
+                    java.util.zip.ZipOutputStream(zipFile.outputStream().buffered()).use { zip ->
+                        fun add(current: java.io.File, relative: String) {
+                            if (current.isDirectory) {
+                                val children = current.listFiles() ?: throw java.io.IOException("Cannot list ${current.name}")
+                                if (children.isEmpty()) {
+                                    zip.putNextEntry(java.util.zip.ZipEntry("$relative/"))
+                                    zip.closeEntry()
+                                }
+                                for (child in children) add(child, "$relative/${child.name}")
+                            } else {
+                                zip.putNextEntry(java.util.zip.ZipEntry(relative))
+                                current.inputStream().use { it.copyTo(zip) }
+                                zip.closeEntry()
+                            }
+                        }
+                        add(source, source.name)
+                    }
+                    browseInternal(parent)
+                } catch (e: Exception) {
+                    zipFile.delete()
+                    error("ZIP creation failed: ${e.message}")
+                }
+            }.show()
     }
 
     private fun requestAllFilesAccess() {
