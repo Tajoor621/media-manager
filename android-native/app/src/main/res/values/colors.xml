@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="mm_gold">#D8B46B</color>
+    <color name="mm_background">#101014</color>
+    <color name="mm_surface">#242329</color>
+    <color name="mm_white">#FFF8EB</color>
+</resources>
