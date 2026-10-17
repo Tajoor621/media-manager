@@ -24,4 +24,5 @@ dependencies {
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.documentfile:documentfile:1.0.1")
     implementation("androidx.biometric:biometric:1.1.0")
+    implementation("com.google.android.material:material:1.12.0")
 }
