@@ -22,6 +22,7 @@ struct LibraryView: View {
     @State private var vaultDelete: SecureVault.Item?
     @State private var vaultError = ""
     @State private var vaultExport: URL?
+    @State private var lastExportTemp: URL?
     @State private var player: AVPlayer?
     @State private var showPlayer = false
     @State private var textEntry: LibraryEntry?
@@ -307,6 +308,7 @@ struct LibraryView: View {
                                 let safeName = URL(fileURLWithPath: decrypted.name).lastPathComponent
                                 let tmp = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-" + safeName)
                                 try decrypted.data.write(to: tmp, options: [.atomic, .completeFileProtection])
+                                lastExportTemp = tmp
                                 vaultExport = tmp
                             } catch { vaultError = error.localizedDescription }
                         }
@@ -340,7 +342,8 @@ struct LibraryView: View {
                 get: { vaultExport.map { TemporaryExport(url: $0) } },
                 set: { if $0 == nil { vaultExport = nil } }
             ), onDismiss: {
-                if let url = vaultExport { try? FileManager.default.removeItem(at: url) }
+                if let url = lastExportTemp { try? FileManager.default.removeItem(at: url) }
+                lastExportTemp = nil
                 vaultExport = nil
             }) { export in
                 ShareSheet(items: [export.url])
@@ -360,7 +363,8 @@ struct LibraryView: View {
         player?.pause()
         player = nil
         showPlayer = false
-        if let url = vaultExport { try? FileManager.default.removeItem(at: url) }
+        if let url = lastExportTemp { try? FileManager.default.removeItem(at: url) }
+        lastExportTemp = nil
         vaultExport = nil
     }
 }
