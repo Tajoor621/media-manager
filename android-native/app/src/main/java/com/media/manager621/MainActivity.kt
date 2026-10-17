@@ -11,6 +11,7 @@ import android.provider.DocumentsContract
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.text.InputType
+import android.text.method.PasswordTransformationMethod
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
@@ -76,7 +77,7 @@ class MainActivity : FragmentActivity() {
         pin = PinSecurity(this)
         window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE,
             android.view.WindowManager.LayoutParams.FLAG_SECURE)
-        if (!pin.configured) setupPin() else unlock()
+        if (pin.lockEnabled) unlock() else { unlocked = true; openHome() }
     }
     override fun onStop() {
         super.onStop()
@@ -86,7 +87,7 @@ class MainActivity : FragmentActivity() {
     }
     override fun onResume() {
         super.onResume()
-        if (pin.configured && unlocked && backgroundAt > 0 &&
+        if (pin.lockEnabled && unlocked && backgroundAt > 0 &&
             System.currentTimeMillis() - backgroundAt > 30_000L) {
             awaitingAllFilesPermission = false
             unlocked = false
@@ -142,60 +143,135 @@ class MainActivity : FragmentActivity() {
     private fun error(text: String) = AlertDialog.Builder(this).setTitle("Media Manager")
         .setMessage(text).setPositiveButton("OK", null).show()
 
-    private fun pinInput(): EditText = EditText(this).apply {
-        inputType = InputType.TYPE_CLASS_NUMBER or InputType.TYPE_NUMBER_VARIATION_PASSWORD
-        hint = "6–64 digit PIN"
+    private fun passwordInput(): EditText = EditText(this).apply {
+        inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        transformationMethod = PasswordTransformationMethod.getInstance()
+        hint = "Password (1–64 letters, numbers or symbols)"
     }
-    private fun setupPin() {
-        layout("Set up Media Manager security")
-        note("Create a local PIN to lock the app and Private Vault. Losing the PIN can make your data inaccessible. This PIN does not encrypt the vault key.")
-        val first = pinInput()
-        val second = pinInput().apply { hint = "Confirm PIN" }
-        content.addView(first)
-        content.addView(second)
-        button("Create PIN and continue") {
-            val a = first.text.toString()
-            if (a != second.text.toString()) { error("PINs do not match"); return@button }
-            try {
-                pin.setPin(a)
-                unlocked = true
-                openHome()
-            } catch (e: Exception) { error(e.message ?: "Invalid PIN") }
-        }
-    }
-    private fun unlock() {
-        layout("Media Manager is locked")
-        val entry = pinInput()
-        content.addView(entry)
-        button("Unlock with PIN") {
-            if (pin.verify(entry.text.toString())) {
-                unlocked = true
-                openHome()
-            } else error("Incorrect PIN")
-        }
-        val supported = BiometricManager.from(this).canAuthenticate(
+
+    private fun biometricAvailable(): Boolean =
+        BiometricManager.from(this).canAuthenticate(
             BiometricManager.Authenticators.BIOMETRIC_STRONG
         ) == BiometricManager.BIOMETRIC_SUCCESS
-        if (supported) button("Unlock with fingerprint / biometrics") {
-            val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
-                object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        unlocked = true
-                        openHome()
+
+    private fun authenticateBiometric(onSuccess: () -> Unit) {
+        if (!biometricAvailable()) {
+            error("Biometric unlock is not available. Enroll a supported fingerprint or biometric in Android Settings first.")
+            return
+        }
+        val prompt = BiometricPrompt(this, ContextCompat.getMainExecutor(this),
+            object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                    onSuccess()
+                }
+                override fun onAuthenticationError(code: Int, message: CharSequence) {
+                    toast("Biometric authentication cancelled: $message")
+                }
+            })
+        prompt.authenticate(
+            BiometricPrompt.PromptInfo.Builder()
+                .setTitle("Media Manager security")
+                .setSubtitle("Confirm your identity")
+                .setNegativeButtonText("Cancel")
+                .build()
+        )
+    }
+
+    private fun showSecuritySettings() {
+        if (!unlocked) { unlock(); return }
+        layout("Security & app lock")
+        note(if (pin.lockEnabled) "App lock: enabled" else "App lock: off (default)")
+        note("App lock is optional. You can use one character or a longer password. Short passwords offer very little protection. Private Vault encryption remains separate from the app lock.")
+        button(if (pin.configured) "Change app password" else "Enable password lock") {
+            val first = passwordInput()
+            val second = passwordInput().apply { hint = "Confirm password" }
+            val fields = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setPadding(32, 8, 32, 8)
+                addView(first)
+                addView(second)
+            }
+            AlertDialog.Builder(this).setTitle("Set app password").setView(fields)
+                .setNegativeButton("Cancel", null)
+                .setPositiveButton("Save") { _, _ ->
+                    val password = first.text.toString()
+                    if (password != second.text.toString()) {
+                        error("Passwords do not match.")
+                    } else {
+                        try {
+                            pin.setPin(password)
+                            pin.biometricOnly = false
+                            toast("Password lock enabled.")
+                            showSecuritySettings()
+                        } catch (e: Exception) { error(e.message ?: "Invalid password") }
                     }
-                    override fun onAuthenticationError(code: Int, message: CharSequence) {
-                        toast("Biometric unlock cancelled: $message")
+                }.show()
+        }
+        if (biometricAvailable()) {
+            button(if (pin.biometricOnly) "Biometric-only lock: enabled" else "Enable biometric-only lock") {
+                authenticateBiometric {
+                    pin.clearLock()
+                    pin.biometricOnly = true
+                    toast("Biometric-only lock enabled.")
+                    showSecuritySettings()
+                }
+            }
+        } else {
+            note("Biometric-only lock is unavailable until a strong biometric is enrolled on this device.")
+        }
+        if (pin.lockEnabled) {
+            button("Turn off app lock") {
+                // Require proof of the current credential before removing an existing lock.
+                if (pin.configured) {
+                    val field = passwordInput()
+                    AlertDialog.Builder(this).setTitle("Confirm existing password")
+                        .setView(field).setNegativeButton("Cancel", null)
+                        .setPositiveButton("Turn off lock") { _, _ ->
+                            if (pin.verify(field.text.toString())) {
+                                pin.clearLock()
+                                toast("App lock disabled.")
+                                showSecuritySettings()
+                            } else error("Incorrect password.")
+                        }.show()
+                } else {
+                    authenticateBiometric {
+                        pin.clearLock()
+                        toast("App lock disabled.")
+                        showSecuritySettings()
                     }
-                })
-            prompt.authenticate(
-                BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Unlock Media Manager")
-                    .setSubtitle("Confirm your identity to open the app")
-                    .setNegativeButtonText("Use PIN")
-                    .build()
-            )
+                }
+            }
+            button("Lock app now") { unlocked = false; unlock() }
+        }
+        button("← Back to files") { openHome() }
+    }
+
+    private fun unlock() {
+        if (!pin.lockEnabled) { unlocked = true; openHome(); return }
+        unlocked = false
+        layout("Media Manager is locked")
+        if (pin.configured) {
+            val entry = passwordInput()
+            content.addView(entry)
+            button("Unlock with password") {
+                if (pin.verify(entry.text.toString())) {
+                    unlocked = true
+                    openHome()
+                } else error("Incorrect password")
+            }
+        }
+        if (biometricAvailable()) {
+            button("Unlock with biometrics") {
+                authenticateBiometric {
+                    unlocked = true
+                    openHome()
+                }
+            }
+        } else if (pin.biometricOnly) {
+            note("Your biometric lock is currently unavailable. Enroll a supported biometric in Android Settings to regain access.")
         }
     }
+
     private fun hasAllFilesAccess(): Boolean =
         Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
 
@@ -225,7 +301,9 @@ class MainActivity : FragmentActivity() {
                 }
             }
             button("Private Vault") { showVault() }
+        button("Security & app lock") { showSecuritySettings() }
             button("Installed apps") { showInstalledApps() }
+            button("Security & app lock") { showSecuritySettings() }
             val granted = currentFolder
             if (granted == null) {
                 note("No folder is currently connected. Choose an option above to display files.")
@@ -247,8 +325,9 @@ class MainActivity : FragmentActivity() {
             button("Browse internal storage (native)") { browseInternal(Environment.getExternalStorageDirectory()) }
         }
         button("Installed apps (launchable)") { showInstalledApps() }
+        button("Security & app lock") { showSecuritySettings() }
         button("Private Vault") { showVault() }
-        button("Lock now") { unlocked = false; unlock() }
+        if (pin.lockEnabled) button("Lock now") { unlocked = false; unlock() }
         val folder = currentFolder
         if (folder == null) {
             note("Choose a folder to browse. File access is limited to what Android allows.")
