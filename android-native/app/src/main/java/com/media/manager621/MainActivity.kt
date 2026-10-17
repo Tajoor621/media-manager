@@ -206,7 +206,32 @@ class MainActivity : FragmentActivity() {
 
     private fun render() {
         if (!unlocked) { unlock(); return }
-        layout("Media Manager 621 • Native")
+        layout("Media Manager 621 • File Explorer")
+        if (!hasAllFilesAccess()) {
+            note("Storage setup • Android has not granted broad access to shared internal storage. Your files are not missing. Approve access in Android Settings to open the internal storage explorer automatically.")
+            if (Build.VERSION.SDK_INT >= 30) {
+                button("1. Enable internal storage access") { requestAllFilesAccess() }
+                note("In Android Settings, enable \"Allow access to manage all files\" for Media Manager 621, then return to the app. Android may use slightly different wording.")
+            } else {
+                note("On Android 10 or older, select a folder through the system picker. This alpha does not support full-storage permissions on those Android versions.")
+            }
+            button("2. Choose a folder instead") { folderPicker.launch(null) }
+            button("Open previously approved folder") {
+                val saved = getSharedPreferences("mm621-folders", MODE_PRIVATE).getString("last", null)
+                if (saved == null) error("No approved folder is saved yet.")
+                else {
+                    currentFolder = DocumentFile.fromTreeUri(this, Uri.parse(saved))
+                    render()
+                }
+            }
+            button("Private Vault") { showVault() }
+            button("Installed apps") { showInstalledApps() }
+            val granted = currentFolder
+            if (granted == null) {
+                note("No folder is currently connected. Choose an option above to display files.")
+                return
+            }
+        }
         note("File explorer and encrypted vault. Android controls storage approval; restricted system folders remain protected.")
         button("Choose / connect device folder") { folderPicker.launch(null) }
         button("Open previously granted folder") {
