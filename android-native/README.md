@@ -1,6 +1,6 @@
 # Media Manager 621 — Native Android alpha
 
-This is a **separate native Android source project**, not the PWABuilder Trusted Web Activity. It introduces Android's Storage Access Framework, user-approved persisted tree grants, an optional All files access settings link, a native explorer, a private encrypted vault and a PIN lock. It is not an unrestricted system-file browser.
+This is a **separate native Android source project**, not the PWABuilder Trusted Web Activity. It introduces Android's Storage Access Framework, user-approved persisted tree grants, an optional All files access settings link, a native explorer, a private encrypted vault and an optional app lock. It is not an unrestricted system-file browser.
 
 ## Build and install
 
@@ -8,7 +8,7 @@ Use Android Studio (JDK 17, Android SDK 35), open `android-native/`, sync Gradle
 
 ## Native navigation update (X-plore-style goal)
 
-On Android 11+, unlock the native app, choose **Grant broad storage access (Android Settings)** and explicitly enable **Allow access to manage all files**. Return to the app. It now automatically opens **Internal shared storage** with a directory list, used/free storage meter, Private Vault and an **Installed apps (launchable)** view. Subsequent unlocks open internal shared storage automatically while the permission is retained. SD cards or provider-specific document trees may still require separate user-approved SAF access.
+On Android 11+, open the native app, choose **Grant broad storage access (Android Settings)** and explicitly enable **Allow access to manage all files**. Return to the app. It now automatically opens **Internal shared storage** with a directory list, used/free storage meter, Private Vault and an **Installed apps (launchable)** view. Subsequent launches open internal shared storage automatically while the permission is retained. SD cards or provider-specific document trees may still require separate user-approved SAF access.
 
 The installed-apps view shows **launchable apps visible to Android's package manager**, not every system package. It links to Android App Info without accessing other apps' private data. Android continues to protect certain directories even after All files access is granted.
 
@@ -19,8 +19,8 @@ The installed-apps view shows **launchable apps visible to Android's package man
 - The native explorer browses user-approved SAF folders and, after Android explicitly grants All files access, offers a separate native internal-storage explorer. Android still protects system and app-private paths.
 - **Hide** is a dot-prefix rename where the SAF provider allows it. This is not security; encrypted Vault is used for private files.
 - **Vault** encrypts a private copy using AES-256-GCM with a non-exportable Android Keystore key. It does not erase the original. To avoid false security guarantees, vault files are not exportable until an explicit authenticated export workflow is implemented.
-- A locally stored PIN verifier uses PBKDF2-HMAC-SHA256 with a random salt. The vault encryption key is bound to the app installation, not the PIN; the PIN locks the UI. Removing app data deletes encrypted files and key material.
-- **Biometric** uses Android BiometricPrompt for optional unlock. It does not replace the PIN or device screen lock.
+- The app opens unlocked by default. Under **Security & app lock**, users can optionally set a 1–64 character alphanumeric password, choose biometric-only authentication if supported and enrolled, or turn the lock off. A one-character password is weak and should not be relied on to protect sensitive information. Password verification uses PBKDF2-HMAC-SHA256 with a random salt. The vault encryption key is bound to the app installation, not the app password; the password only locks the UI. Removing app data deletes encrypted files and key material.
+- **Biometric** uses Android BiometricPrompt for optional biometric-only unlock without requiring an app password. A supported strong biometric must be enrolled first; the device screen lock remains managed by Android.
 - Audio/video/image/text preview uses Android's native viewers within the app. Some formats and editing capabilities are not supported.
 - This is an **alpha**: requires Android device testing and hardening before a production security claim.
 
