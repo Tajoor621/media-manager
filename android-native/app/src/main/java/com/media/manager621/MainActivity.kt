@@ -43,6 +43,7 @@ class MainActivity : FragmentActivity() {
     private var query = ""
     private var clipboard: java.io.File? = null
     private var cutClipboard = false
+    private var previewBack: (() -> Unit)? = null
 
     private val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -319,6 +320,7 @@ class MainActivity : FragmentActivity() {
             content.addView(row)
         }
         if (children.size > 1500) note("Showing first 1,500 entries.")
+        button("Refresh folder") { browseInternal(folder) }
     }
 
     private fun previewNativeFile(file: java.io.File) {
@@ -326,6 +328,7 @@ class MainActivity : FragmentActivity() {
         val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
         val mime = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+        previewBack = { browseInternal(file.parentFile ?: Environment.getExternalStorageDirectory()) }
         openFile(uri, file.name, mime, file.length())
     }
 
@@ -356,7 +359,7 @@ class MainActivity : FragmentActivity() {
     }
 
     private fun manageInternal(file: java.io.File, parent: java.io.File) {
-        val options = arrayOf("Details", "Rename", "Hide / unhide", "Copy to another folder", "Move to another folder", "Copy into this folder", "Create ZIP", "Delete")
+        val options = arrayOf("Details", "Rename", "Hide / unhide", "Copy to another folder", "Move to another folder", "Copy into this folder", "Create ZIP", "Extract ZIP", "Delete")
         AlertDialog.Builder(this).setTitle(file.name).setItems(options) { _, which ->
             when (which) {
                 0 -> showNativeDetails(file)
@@ -391,7 +394,8 @@ class MainActivity : FragmentActivity() {
                     }
                 }
                 6 -> createZip(file, parent)
-                7 -> AlertDialog.Builder(this).setTitle("Delete permanently?")
+                7 -> if (file.isFile && file.extension.equals("zip", true)) extractZip(file, parent) else error("Select a ZIP file to extract")
+                8 -> AlertDialog.Builder(this).setTitle("Delete permanently?")
                     .setMessage("This removes the selected file or empty folder from device storage.")
                     .setNegativeButton("Cancel", null)
                     .setPositiveButton("Delete") { _, _ ->
@@ -484,6 +488,52 @@ class MainActivity : FragmentActivity() {
             }.show()
     }
 
+    private fun extractZip(file: java.io.File, parent: java.io.File) {
+        val folder = java.io.File(parent, file.nameWithoutExtension)
+        if (folder.exists()) { error("Extraction folder already exists"); return }
+        AlertDialog.Builder(this).setTitle("Extract ZIP?")
+            .setMessage("Extract to ${folder.name}/. Archive entries are checked against unsafe paths.")
+            .setNegativeButton("Cancel", null)
+            .setPositiveButton("Extract") { _, _ ->
+                Thread {
+                    try {
+                        require(folder.mkdir()) { "Cannot create extraction folder" }
+                        val root = folder.canonicalFile.toPath()
+                        var count = 0
+                        var total = 0L
+                        java.util.zip.ZipInputStream(file.inputStream().buffered()).use { zip ->
+                            while (true) {
+                                val entry = zip.nextEntry ?: break
+                                count++
+                                require(count <= 20_000) { "Too many ZIP entries" }
+                                val out = java.io.File(folder, entry.name)
+                                require(out.canonicalFile.toPath().startsWith(root)) { "Unsafe archive entry" }
+                                if (entry.isDirectory) require(out.isDirectory || out.mkdirs()) { "Cannot create directory" }
+                                else {
+                                    require(out.parentFile?.isDirectory == true || out.parentFile?.mkdirs() == true)
+                                    out.outputStream().use { stream ->
+                                        val buffer = ByteArray(32_768)
+                                        while (true) {
+                                            val n = zip.read(buffer)
+                                            if (n < 0) break
+                                            total += n
+                                            require(total <= 2_000_000_000L) { "ZIP exceeds 2 GB extraction safety limit" }
+                                            stream.write(buffer, 0, n)
+                                        }
+                                    }
+                                }
+                                zip.closeEntry()
+                            }
+                        }
+                        runOnUiThread { browseInternal(parent) }
+                    } catch (e: Exception) {
+                        folder.deleteRecursively()
+                        runOnUiThread { error("ZIP extraction failed: ${e.message}") }
+                    }
+                }.start()
+            }.show()
+    }
+
     private fun requestAllFilesAccess() {
         if (Build.VERSION.SDK_INT < 30) {
             error("All-files special permission applies to Android 11+.")
@@ -545,12 +595,14 @@ class MainActivity : FragmentActivity() {
             .setNegativeButton("Cancel", null)
             .setPositiveButton("Save") { _, _ -> onSave(field.text.toString().trim()) }.show()
     }
-    private fun openFile(file: DocumentFile) =
+    private fun openFile(file: DocumentFile) {
+        previewBack = { render() }
         openFile(file.uri, file.name ?: "", file.type ?: "", file.length())
+    }
 
     private fun openFile(uri: Uri, name: String, mime: String, length: Long) {
         layout("Preview • $name")
-        button("← Back to files") { render() }
+        button("← Back to files") { previewBack?.invoke() ?: openHome() }
         when {
             mime.startsWith("image/") -> {
                 try {
@@ -625,7 +677,7 @@ class MainActivity : FragmentActivity() {
         if (!unlocked) { unlock(); return }
         layout("Private Vault • encrypted")
         note("Vault entries are AES-256-GCM encrypted private copies. Originals remain on device. Hide/unhide is NOT encryption.")
-        button("← Back to file manager") { render() }
+        button("← Back to file manager") { openHome() }
         button("Import file into encrypted Vault") { vaultPicker.launch(arrayOf("*/*")) }
         for (name in vault.list()) {
             button("🔒 ${name.removeSuffix(".vault")}") {
