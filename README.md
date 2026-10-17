@@ -47,7 +47,7 @@ The project includes a browser-based Progressive Web App (PWA), a native Android
 | File/folder operations | Implemented for imported library items | Native rename, copy/move, create, delete and hide/unhide foundations | Native create, rename, delete, search and favorites foundations |
 | Media preview and playback | Browser-supported formats | Native supported image/audio/video/text | Quick Look, AVPlayer and text editor |
 | Private encrypted copies | Browser IndexedDB vault | Android Keystore vault | CryptoKit/Keychain vault |
-| App lock | Browser vault passphrase | PIN and optional biometrics | Face ID, Touch ID or device passcode |
+| App lock | Browser vault passphrase | Optional 1–64 character password or biometric-only lock (off by default) | Face ID, Touch ID or device passcode |
 | Offline operation | Cached web shell and stored local files | Native local functionality | Native local functionality |
 | Maturity | Deployed PWA; device-dependent | Alpha; physical-device acceptance pending | Alpha; physical-device acceptance pending |
 
@@ -75,7 +75,7 @@ The native Android edition is written in Kotlin and uses Android's Storage Acces
 
 1. Open [GitHub Actions](../../actions/workflows/android-native.yml) and select the latest **successful** native Android build.
 2. Download the **`media-manager-621-native-debug-apk`** artifact, extract the ZIP, and install **`app-debug.apk`** on your Android test device.
-3. Open **Media Manager 621 — Native**, complete the initial PIN setup, and select **Enable internal storage access**.
+3. Open **Media Manager 621 — Native**, open the app without a mandatory lock, then select **Enable internal storage access**.
 4. In Android Settings, explicitly allow **Manage all files** for Media Manager 621, then return to the app.
 5. When permission is active, the app should open the **shared internal storage explorer** automatically. Tap a folder to browse it; tap a supported file to open it; long-press an item for file actions.
 6. If broad access is unavailable, use **Choose a folder** to authorize a supported directory through Android's system picker.
