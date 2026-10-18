@@ -30,4 +30,11 @@ im.resize((180, 180), Image.Resampling.LANCZOS).save(
 im.resize((768, 768), Image.Resampling.LANCZOS).save(
     PUBLIC / "brand" / "media-manager-brand.png", optimize=True
 )
+# Existing web components refer to these legacy brand paths.
+im.resize((768, 768), Image.Resampling.LANCZOS).save(
+    PUBLIC / "brand" / "logo.jpg", quality=92, optimize=True
+)
+im.resize((256, 256), Image.Resampling.LANCZOS).save(
+    PUBLIC / "brand" / "mark.png", optimize=True
+)
 print("Media-Manager icons and web brand generated.")
