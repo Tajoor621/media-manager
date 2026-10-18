@@ -1,3 +1,7 @@
+## Brand identity
+
+The native Android app uses the owner-supplied black-and-gold **Media-Manager TN-621** artwork as its launcher icon and in-app header. The same artwork is the source for generated PWA install icons and the native iOS AppIcon. For iOS local builds, run `python3 -m pip install Pillow && python3 scripts/generate-ios-icon.py` from the repository root before generating the Xcode project. GitHub Actions performs this step automatically. Web assets are generated using `python3 scripts/generate-brand-icons.py` during GitHub Pages deployment. The source in `public/brand/media-manager-user-icon.webp` is optimized for repository size; retain the original high-resolution artwork for print or future re-export.
+
 ## Phase 1 — SAF-first native Android architecture
 
 **Status:** Phase 1 implementation under verification. The native Android application keeps its original package ID `com.media.manager621` and Android 8.0 minimum (`minSdk 26`). The application UI still uses Kotlin Views; a Compose/Room migration is planned but not falsely represented as complete.
