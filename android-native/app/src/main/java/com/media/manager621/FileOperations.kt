@@ -212,10 +212,47 @@ internal fun MainActivity.extractZip(file: java.io.File, parent: java.io.File) {
     }
 
 
+internal fun MainActivity.transferSafFile(
+    source: DocumentFile, destination: DocumentFile, move: Boolean
+) {
+    if (!source.isFile) { error("Folder transfer is not available in Phase 1."); return }
+    val name = source.name ?: run { error("File has no name"); return }
+    if (!FileSafety.isSafeLeafName(name)) { error("Unsupported file name"); return }
+    if (!destination.canWrite()) { error("Destination is read-only"); return }
+    AlertDialog.Builder(this)
+        .setTitle(if (move) "Move file?" else "Copy file?")
+        .setMessage("Transfer \"$name\" to the selected folder? Existing files will never be overwritten.")
+        .setNegativeButton("Cancel", null)
+        .setPositiveButton("Transfer") { _, _ ->
+            toast("Transferring file in background…")
+            listingExecutor.execute {
+                var target: DocumentFile? = null
+                try {
+                    val repository = SafFileRepository(contentResolver)
+                    target = repository.createFile(destination, source.type ?: "application/octet-stream", name)
+                    repository.copyFile(source.uri, target.uri)
+                    val removed = !move || repository.delete(source)
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) {
+                            toast(if (removed) "Transfer complete" else "Copy complete; original could not be deleted")
+                            render()
+                        }
+                    }
+                } catch (failure: Exception) {
+                    target?.delete()
+                    Log.e("MM621", "SAF transfer failed", failure)
+                    runOnUiThread {
+                        if (!isFinishing && !isDestroyed) error("Transfer failed: ${failure.message}")
+                    }
+                }
+            }
+        }.show()
+}
+
 internal fun MainActivity.manage(file: DocumentFile) {
         selected = file
         val actions = mutableListOf("Rename", "Hide / unhide", "Delete")
-        if (file.isFile) { actions.add("Copy into current folder"); actions.add("Add encrypted copy to Vault"); actions.add("Share file") }
+        if (file.isFile) { actions.add("Copy into current folder"); actions.add("Copy to another folder"); actions.add("Move to another folder"); actions.add("Add encrypted copy to Vault"); actions.add("Share file") }
         AlertDialog.Builder(this).setTitle(file.name).setItems(actions.toTypedArray()) { _, which ->
             when (actions[which]) {
                 "Rename" -> textDialog("New name", file.name ?: "") { rename(file, it) }
@@ -229,6 +266,10 @@ internal fun MainActivity.manage(file: DocumentFile) {
                     .setPositiveButton("Delete") { _, _ ->
                         if (file.delete()) render() else error("Android denied deletion")
                     }.show()
+                "Copy to another folder", "Move to another folder" -> {
+                    pendingSafTransfer = file to (actions[which] == "Move to another folder")
+                    transferPicker.launch(null)
+                }
                 "Copy into current folder" -> {
                     val folder = currentFolder
                     if (folder == null) { error("Choose a destination folder first"); return@setItems }
