@@ -12,6 +12,26 @@ android {
         versionCode = 1
         versionName = "1.0.0-native-alpha"
     }
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("standard") {
+            dimension = "distribution"
+            buildConfigField("boolean", "ALLOW_ALL_FILES", "true")
+        }
+        create("foss") {
+            dimension = "distribution"
+            buildConfigField("boolean", "ALLOW_ALL_FILES", "true")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("boolean", "ALLOW_ALL_FILES", "false")
+        }
+        create("system") {
+            dimension = "distribution"
+            buildConfigField("boolean", "ALLOW_ALL_FILES", "true")
+        }
+    }
+    buildFeatures { buildConfig = true }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -20,6 +40,8 @@ android {
     kotlinOptions { jvmTarget = "17" }
 }
 dependencies {
+    implementation(project(":core:files"))
+    testImplementation("junit:junit:4.13.2")
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.activity:activity-ktx:1.9.3")
     implementation("androidx.documentfile:documentfile:1.0.1")
