@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - "ios-native/**"
+      - "public/brand/media-manager-user-icon.webp"
+      - "scripts/generate-ios-icon.py"
       - ".github/workflows/ios-native.yml"
   pull_request:
     paths:
@@ -21,6 +23,10 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Generate branded iOS app icon
+        run: |
+          python3 -m pip install --disable-pip-version-check Pillow
+          python3 scripts/generate-ios-icon.py
       - name: Install XcodeGen
         run: brew install xcodegen
       - name: Generate Xcode project
