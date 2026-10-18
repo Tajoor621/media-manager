@@ -25,9 +25,11 @@ import androidx.documentfile.provider.DocumentFile
 import java.util.concurrent.Executor
 
 import android.util.Log
+import com.media.manager621.core.files.FileSafety
+import com.media.manager621.core.files.SafFileRepository
 
 internal fun MainActivity.hasAllFilesAccess(): Boolean =
-        Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
+        BuildConfig.ALLOW_ALL_FILES && Build.VERSION.SDK_INT >= 30 && Environment.isExternalStorageManager()
 
 
 internal fun MainActivity.render() {
@@ -35,11 +37,11 @@ internal fun MainActivity.render() {
         layout("Media Manager 621 • File Explorer")
         if (!hasAllFilesAccess()) {
             note("Storage setup • Android has not granted broad access to shared internal storage. Your files are not missing. Approve access in Android Settings to open the internal storage explorer automatically.")
-            if (Build.VERSION.SDK_INT >= 30) {
+            if (BuildConfig.ALLOW_ALL_FILES && Build.VERSION.SDK_INT >= 30) {
                 button("1. Enable internal storage access") { requestAllFilesAccess() }
                 note("In Android Settings, enable \"Allow access to manage all files\" for Media Manager 621, then return to the app. Android may use slightly different wording.")
             } else {
-                note("On Android 10 or older, select a folder through the system picker. This alpha does not support full-storage permissions on those Android versions.")
+                note("Use the system folder picker. This edition does not require broad storage access.")
             }
             button("2. Choose a folder instead") { folderPicker.launch(null) }
             button("Open previously approved folder") {
@@ -69,7 +71,8 @@ internal fun MainActivity.render() {
                 render()
             }
         }
-        button("Grant broad storage access (Android Settings)") { requestAllFilesAccess() }
+        if (BuildConfig.ALLOW_ALL_FILES && Build.VERSION.SDK_INT >= 30)
+            button("Optional: Grant broad storage access (Android Settings)") { requestAllFilesAccess() }
         if (hasAllFilesAccess()) {
             button("Browse internal storage (native)") { browseInternal(Environment.getExternalStorageDirectory()) }
         }
@@ -89,8 +92,7 @@ internal fun MainActivity.render() {
         }
         button("Create folder here") { textDialog("New folder name") { name ->
             try {
-                require(name.isNotBlank() && !name.contains('/'))
-                requireNotNull(folder.createDirectory(name)) { "Provider denied folder creation" }
+                SafFileRepository(contentResolver).createDirectory(folder, name)
                 render()
             } catch (e: Exception) { error(e.message ?: "Cannot create folder") }
         } }
@@ -98,7 +100,7 @@ internal fun MainActivity.render() {
         note("Loading selected folder…")
         listingExecutor.execute {
             val children = try {
-                folder.listFiles().sortedWith(compareByDescending<DocumentFile> { it.isDirectory }.thenBy { it.name?.lowercase() })
+                SafFileRepository(contentResolver).children(folder)
             } catch (e: Exception) {
                 Log.e("MM621", "SAF folder listing failed", e)
                 runOnUiThread { if (listingGeneration == generation && !isFinishing) error("Cannot list folder: ${e.message}") }
@@ -209,7 +211,7 @@ internal fun MainActivity.browseInternal(directory: java.io.File) {
 
 internal fun MainActivity.previewNativeFile(file: java.io.File) {
         // FileProvider creates a temporary content URI for our own viewer.
-        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+        val uri = Uri.fromFile(file) // In-process preview; FileProvider is restricted to app-owned share directories.
         val mime = android.webkit.MimeTypeMap.getSingleton()
             .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
         previewBack = { browseInternal(file.parentFile ?: Environment.getExternalStorageDirectory()) }
@@ -245,8 +247,8 @@ internal fun MainActivity.showInstalledApps() {
 
 
 internal fun MainActivity.requestAllFilesAccess() {
-        if (Build.VERSION.SDK_INT < 30) {
-            error("All-files special permission applies to Android 11+.")
+        if (!BuildConfig.ALLOW_ALL_FILES || Build.VERSION.SDK_INT < 30) {
+            error("All-files access is unavailable in this edition or Android version.")
             return
         }
         if (Environment.isExternalStorageManager()) {
