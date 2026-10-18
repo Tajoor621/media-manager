@@ -5,6 +5,7 @@
 - [x] Kept the existing application ID `com.media.manager621` for continuity; did not copy any proprietary branding.
 - [x] Added Android library module `core:files` for SAF operations, leaf-name validation and root boundary checks.
 - [x] Kept the existing native browser, folder picker, internal storage mode, optional app lock, vault and file operations.
+- [x] Added SAF-backed empty-file creation, same-folder file copying, and user-selected cross-folder file copy/move with no-overwrite behavior. Folder transfers, batch actions and conflict-resolution UI are not yet implemented.
 - [x] Made SAF the default path and limited optional All files access to build flavors that declare it.
 - [x] Added `standard`, `system`, `play`, and `foss` product flavors with separate merged permission manifests.
 - [x] Restricted the FileProvider to app-owned `shared/` directories; internal preview remains in-process.
