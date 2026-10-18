@@ -215,7 +215,7 @@ internal fun MainActivity.extractZip(file: java.io.File, parent: java.io.File) {
 internal fun MainActivity.manage(file: DocumentFile) {
         selected = file
         val actions = mutableListOf("Rename", "Hide / unhide", "Delete")
-        if (file.isFile) { actions.add("Add encrypted copy to Vault"); actions.add("Share file") }
+        if (file.isFile) { actions.add("Copy into current folder"); actions.add("Add encrypted copy to Vault"); actions.add("Share file") }
         AlertDialog.Builder(this).setTitle(file.name).setItems(actions.toTypedArray()) { _, which ->
             when (actions[which]) {
                 "Rename" -> textDialog("New name", file.name ?: "") { rename(file, it) }
@@ -229,6 +229,27 @@ internal fun MainActivity.manage(file: DocumentFile) {
                     .setPositiveButton("Delete") { _, _ ->
                         if (file.delete()) render() else error("Android denied deletion")
                     }.show()
+                "Copy into current folder" -> {
+                    val folder = currentFolder
+                    if (folder == null) { error("Choose a destination folder first"); return@setItems }
+                    textDialog("Copy as", "Copy of ${file.name ?: "file"}") { newName ->
+                        if (!FileSafety.isSafeLeafName(newName)) { error("Invalid file name"); return@textDialog }
+                        toast("Copying file…")
+                        listingExecutor.execute {
+                            var created: DocumentFile? = null
+                            try {
+                                val repo = SafFileRepository(contentResolver)
+                                created = repo.createFile(folder, file.type ?: "application/octet-stream", newName)
+                                repo.copyFile(file.uri, created.uri)
+                                runOnUiThread { if (!isFinishing && !isDestroyed) { toast("Copy complete"); render() } }
+                            } catch (e: Exception) {
+                                created?.delete()
+                                Log.e("MM621", "SAF copy failed", e)
+                                runOnUiThread { if (!isFinishing && !isDestroyed) error("Copy failed: ${e.message}") }
+                            }
+                        }
+                    }
+                }
                 "Add encrypted copy to Vault" -> {
                     try { vault.import(file.uri, file.name ?: "file"); toast("Encrypted copy saved") }
                     catch (e: Exception) { error("Import failed: ${e.message}") }
