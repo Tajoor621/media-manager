@@ -25,6 +25,8 @@ import androidx.documentfile.provider.DocumentFile
 import java.util.concurrent.Executor
 
 import android.util.Log
+import com.media.manager621.core.files.FileSafety
+import com.media.manager621.core.files.SafFileRepository
 
 internal fun MainActivity.manageInternal(file: java.io.File, parent: java.io.File) {
         val options = arrayOf("Details", "Rename", "Hide / unhide", "Copy to another folder", "Move to another folder", "Copy into this folder", "Create ZIP", "Extract ZIP", "Delete")
@@ -37,7 +39,7 @@ internal fun MainActivity.manageInternal(file: java.io.File, parent: java.io.Fil
                     } else null
                     val action: (String) -> Unit = { name ->
                         val dest = java.io.File(parent, name)
-                        if (name.isBlank() || name.contains('/') || dest.exists() || !file.renameTo(dest))
+                        if (!FileSafety.isSafeLeafName(name) || dest.exists() || !file.renameTo(dest))
                             error("Rename denied or name already exists")
                         else browseInternal(parent)
                     }
@@ -55,7 +57,7 @@ internal fun MainActivity.manageInternal(file: java.io.File, parent: java.io.Fil
                     else textDialog("Copy as", "Copy of ${file.name}") { name ->
                         try {
                             val dest = java.io.File(parent, name)
-                            require(name.isNotBlank() && !name.contains('/') && !dest.exists())
+                            require(FileSafety.isSafeLeafName(name) && !dest.exists())
                             file.inputStream().use { input -> dest.outputStream().use { input.copyTo(it) } }
                             browseInternal(parent)
                         } catch (e: Exception) { error("Copy failed: ${e.message}") }
@@ -244,8 +246,8 @@ internal fun MainActivity.manage(file: DocumentFile) {
     }
 
 internal fun MainActivity.rename(file: DocumentFile, name: String) {
-        if (name.isBlank() || name.contains('/')) { error("Invalid name"); return }
-        if (file.renameTo(name)) render() else error("Provider denied rename")
+        if (!FileSafety.isSafeLeafName(name)) { error("Invalid name"); return }
+        if (SafFileRepository(contentResolver).rename(file, name)) render() else error("Provider denied rename")
     }
 
 internal fun MainActivity.textDialog(title: String, initial: String = "", onSave: (String) -> Unit) {
