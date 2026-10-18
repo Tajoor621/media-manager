@@ -77,5 +77,10 @@ if (!existsSync(indexPath)) {
   writeFileSync(indexPath, html);
 }
 
+// Keep browser-tab favicon aligned with the generated owner-supplied app icon.
+let brandedHtml = readFileSync(indexPath, "utf8");
+brandedHtml = brandedHtml.replace(/<link\\s+rel=["']icon["'][^>]*>/gi, "");
+brandedHtml = brandedHtml.replace("</head>", `<link rel="icon" type="image/png" href="${basePath}icon-192.png" /></head>`);
+writeFileSync(indexPath, brandedHtml);
 writeFileSync(join(outDir, "404.html"), readFileSync(indexPath));
 console.log(`GitHub Pages static site written to ${outDir}`);
