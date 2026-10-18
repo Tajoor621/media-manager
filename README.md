@@ -69,12 +69,12 @@ The web edition is a responsive PWA built with React, TypeScript, Vite, Tailwind
 
 **Source:** [`android-native/`](android-native/) · **Build workflow:** [Native Android debug APK](.github/workflows/android-native.yml)
 
-The native Android edition is written in Kotlin and uses Android's Storage Access Framework (SAF). On Android 11 and later it can also request the special **All files access** permission for shared internal storage. This permission must be approved by the user in Android Settings.
+The native Android edition is written in Kotlin and uses Android's Storage Access Framework (SAF). On Android 11 and later, the **standard**, **foss**, and **system** variants can request optional **All files access** for shared internal storage. The **play** variant uses SAF only. This permission must be approved by the user in Android Settings.
 
 ### Install and open device files
 
 1. Open [GitHub Actions](../../actions/workflows/android-native.yml) and select the latest **successful** native Android build.
-2. Download the **`media-manager-621-native-debug-apk`** artifact, extract the ZIP, and install **`app-debug.apk`** on your Android test device.
+2. Download the **`media-manager-621-native-standard-debug-apk`** artifact, extract the ZIP, and install **`app-standard-debug.apk`** on your Android test device.
 3. Open **Media Manager 621 — Native**, open the app without a mandatory lock, then select **Enable internal storage access**.
 4. In Android Settings, explicitly allow **Manage all files** for Media Manager 621, then return to the app.
 5. When permission is active, the app should open the **shared internal storage explorer** automatically. Tap a folder to browse it; tap a supported file to open it; long-press an item for file actions.
