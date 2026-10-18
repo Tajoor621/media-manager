@@ -172,6 +172,12 @@ class MainActivity : FragmentActivity() {
             setTextColor(0xffd8b46b.toInt())
             setPadding(0, 0, 0, 12)
         }
+        val brandIcon = ImageView(this).apply {
+            setImageResource(R.drawable.media_manager_user_icon)
+            scaleType = ImageView.ScaleType.FIT_CENTER
+            contentDescription = "Media-Manager TN-621 logo"
+        }
+        rootLayout.addView(brandIcon, LinearLayout.LayoutParams(-1, (100 * resources.displayMetrics.density).toInt()))
         rootLayout.addView(header)
         val scroll = ScrollView(this)
         content = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
