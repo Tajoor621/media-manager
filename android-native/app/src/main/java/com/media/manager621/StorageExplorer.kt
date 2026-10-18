@@ -96,6 +96,12 @@ internal fun MainActivity.render() {
                 render()
             } catch (e: Exception) { error(e.message ?: "Cannot create folder") }
         } }
+        button("Create empty file here") { textDialog("New file name") { name ->
+            try {
+                SafFileRepository(contentResolver).createFile(folder, "application/octet-stream", name)
+                render()
+            } catch (e: Exception) { error(e.message ?: "Cannot create file") }
+        } }
         val generation = listingGeneration
         note("Loading selected folder…")
         listingExecutor.execute {
