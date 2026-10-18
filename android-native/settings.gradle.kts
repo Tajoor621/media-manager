@@ -6,4 +6,4 @@ dependencyResolutionManagement {
     repositories { google(); mavenCentral() }
 }
 rootProject.name = "MediaManager621"
-include(":app")
+include(":app", ":core:files")
