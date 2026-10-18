@@ -45,6 +45,7 @@ class MainActivity : FragmentActivity() {
     internal var clipboard: java.io.File? = null
     internal var cutClipboard = false
     internal var previewBack: (() -> Unit)? = null
+    private var pendingExternalView = true
     internal val listingExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     internal var listingGeneration = 0
 
@@ -178,6 +179,18 @@ class MainActivity : FragmentActivity() {
 
     internal fun openHome() {
         if (!unlocked) { unlock(); return }
+        if (pendingExternalView && intent?.action == Intent.ACTION_VIEW) {
+            pendingExternalView = false
+            val uri = intent?.data
+            if (uri?.scheme == "content" && (intent.flags and Intent.FLAG_GRANT_READ_URI_PERMISSION != 0)) {
+                val mime = contentResolver.getType(uri) ?: intent.type ?: "application/octet-stream"
+                val name = DocumentFile.fromSingleUri(this, uri)?.name ?: "Shared document"
+                previewBack = { render() }
+                openFile(uri, name, mime, -1L)
+                return
+            }
+            error("This link cannot be opened. Select a document from a trusted provider.")
+        }
         if (hasAllFilesAccess()) browseInternal(Environment.getExternalStorageDirectory()) else render()
     }
 
