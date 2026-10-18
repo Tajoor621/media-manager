@@ -64,6 +64,28 @@ class MainActivity : FragmentActivity() {
             } catch (e: Exception) { android.util.Log.e("MM621", "SAF permission failed", e); error("Folder access denied: ${e.message}") }
         }
     }
+    internal var pendingSafTransfer: Pair<DocumentFile, Boolean>? = null
+    internal val transferPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        val pending = pendingSafTransfer
+        pendingSafTransfer = null
+        if (uri != null && pending != null && unlocked) {
+            try {
+                contentResolver.takePersistableUriPermission(
+                    uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+                val destination = DocumentFile.fromTreeUri(this, uri)
+                if (destination == null || !destination.isDirectory) {
+                    error("Destination is not a writable folder.")
+                } else {
+                    transferSafFile(pending.first, destination, pending.second)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("MM621", "SAF transfer destination rejected", e)
+                error("Cannot access destination folder: ${e.message}")
+            }
+        }
+    }
+
     internal val vaultPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null && unlocked) {
             try {
