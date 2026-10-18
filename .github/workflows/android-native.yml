@@ -27,20 +27,31 @@ jobs:
           gradle-version: "8.10.2"
       - name: Compile native Android debug APK
         working-directory: android-native
-        run: gradle :app:assembleDebug --stacktrace
+        run: gradle :core:files:testDebugUnitTest :app:testStandardDebugUnitTest :app:assembleStandardDebug :app:assembleFossDebug :app:assemblePlayDebug :app:assembleSystemDebug --stacktrace
       - name: Verify APK signature and install compatibility metadata
         working-directory: android-native
         shell: bash
         run: |
           set -euo pipefail
-          APK="app/build/outputs/apk/debug/app-debug.apk"
+          APK="app/build/outputs/apk/standard/debug/app-standard-debug.apk"
           test -s "$APK"
           BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK"
           "$BUILD_TOOLS/aapt" dump badging "$APK" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|launchable-activity:|native-code:)"
           echo "APK size: $(du -h "$APK" | cut -f1)"
+      - name: Verify FOSS variant excludes commercial SDKs
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/foss/debug/app-foss-debug.apk"
+          test -s "$APK"
+          if unzip -l "$APK" | grep -Ei 'firebase|google/android/gms/ads|billingclient'; then
+            echo "Unexpected commercial SDK in FOSS APK" >&2
+            exit 1
+          fi
       - uses: actions/upload-artifact@v4
         with:
-          name: media-manager-621-native-debug-apk
-          path: android-native/app/build/outputs/apk/debug/app-debug.apk
+          name: media-manager-621-native-standard-debug-apk
+          path: android-native/app/build/outputs/apk/standard/debug/app-standard-debug.apk
           if-no-files-found: error
