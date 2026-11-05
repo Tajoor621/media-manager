@@ -8,8 +8,7 @@ export const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-gold text-gold-fg hover:bg-gold/90",
-        secondary:
-          "bg-elevated text-foreground hairline hover:border-gold/50",
+        secondary: "bg-elevated text-foreground hairline hover:border-gold/50",
         ghost: "text-muted hover:text-foreground hover:bg-elevated",
         danger: "bg-danger text-foreground hover:bg-danger/90",
       },
@@ -65,13 +64,7 @@ export function Input({ className, ...props }: React.ComponentProps<"input">) {
   );
 }
 
-export function Badge({
-  className,
-  children,
-}: {
-  className?: string;
-  children: React.ReactNode;
-}) {
+export function Badge({ className, children }: { className?: string; children: React.ReactNode }) {
   return (
     <span
       className={cn(
@@ -83,6 +76,10 @@ export function Badge({
     </span>
   );
 }
+
+const modalStack: HTMLElement[] = [];
+const FOCUSABLE =
+  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function Modal({
   open,
@@ -97,14 +94,65 @@ export function Modal({
   children: React.ReactNode;
   wide?: boolean;
 }) {
+  const titleId = React.useId();
+  const panelRef = React.useRef<HTMLDivElement>(null);
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+
   React.useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+    const panel = panelRef.current;
+    if (!panel) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    modalStack.push(panel);
+
+    const focusable = () =>
+      [...panel.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
+        (el) => !el.hasAttribute("disabled"),
+      );
+
+    if (!panel.contains(document.activeElement)) {
+      const first = focusable()[0];
+      (first ?? panel).focus();
+    }
+
+    const onKey = (event: KeyboardEvent) => {
+      if (modalStack[modalStack.length - 1] !== panel) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const items = focusable();
+      if (!items.length) {
+        event.preventDefault();
+        panel.focus();
+        return;
+      }
+      const first = items[0];
+      const last = items[items.length - 1];
+      const active = document.activeElement;
+      const inside = panel.contains(active);
+      if (event.shiftKey && (!inside || active === first)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (!inside || active === last)) {
+        event.preventDefault();
+        first.focus();
+      }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      const index = modalStack.indexOf(panel);
+      if (index >= 0) modalStack.splice(index, 1);
+      if (previous && document.contains(previous)) previous.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-6">
@@ -115,15 +163,17 @@ export function Modal({
         onClick={onClose}
       />
       <div
+        ref={panelRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
+        tabIndex={-1}
         className={cn(
-          "relative z-10 max-h-[90dvh] w-full overflow-auto rounded-t-xl bg-card p-5 shadow-2xl hairline sm:rounded-xl",
+          "relative z-10 max-h-[90dvh] w-full overflow-auto rounded-t-xl bg-card p-5 shadow-2xl outline-none hairline sm:rounded-xl",
           wide ? "sm:max-w-2xl" : "sm:max-w-md",
         )}
       >
-        <h2 id="modal-title" className="font-display text-sm tracking-[0.18em] text-gold">
+        <h2 id={titleId} className="font-display text-sm tracking-[0.18em] text-gold">
           {title}
         </h2>
         <div className="mt-4">{children}</div>

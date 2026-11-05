@@ -6,6 +6,10 @@
 
 Media Manager 621 brings personal files, photos, videos, music, and documents into a single organized workspace. Its interface uses a distinctive dark-and-gold design, with platform-specific applications built around the storage and security capabilities of each operating system.
 
+![Media Manager 621 library on a desktop browser](public/screenshots/media-manager-desktop.png)
+
+![Media Manager 621 library on a phone](public/screenshots/media-manager-mobile.png)
+
 The project includes a browser-based Progressive Web App (PWA), a native Android implementation, and a native SwiftUI iOS implementation. **These are separate application builds:** installing the PWA or a PWABuilder APK does not install the native Android file manager.
 
 > **Development status:** The web app is deployed. The Android and iOS applications are in active **alpha development**. Features listed below reflect implemented source code, not a guarantee of successful operation on every device. The native apps are not yet production-certified or equivalent to a mature system file manager.
@@ -16,7 +20,9 @@ The project includes a browser-based Progressive Web App (PWA), a native Android
 
 - Import selected photos, videos, music, documents, and other supported files.
 - Organize imported content into folders and browse it inside Media Manager.
-- Search, sort, and inspect files; manage supported library items using rename, copy, move, delete, favorites, and other available actions.
+- Search, sort, and inspect files; filter the current view by folders, photos, videos, audio, or documents.
+- Find library files that share a name and size, then jump to each copy. The comparison stays on this device and does not upload anything.
+- Manage supported library items using rename, copy, move, delete, favorites, and other available actions.
 - Preview supported image, audio, video, PDF, and text formats without leaving the application when the platform supports them.
 - Share or export files through the operating system's supported sharing interfaces.
 - Keep the web app shell available offline after its initial successful load, subject to browser storage policies.
@@ -38,18 +44,18 @@ The project includes a browser-based Progressive Web App (PWA), a native Android
 
 ## Choose your platform
 
-| Capability | Web / Home Screen PWA | Native Android alpha | Native iOS alpha |
-| --- | --- | --- | --- |
-| Installable app-like interface | Yes | Yes, via APK | Yes, after Xcode signing |
-| Local personal library | Yes | SAF-selected folders and internal shared-storage explorer | App-owned Documents library |
-| Device file import | Browser file/folder picker | Android Storage Access Framework | Native Files and Photos pickers |
-| Browse shared internal storage without choosing each folder | No | Android 11+ after explicit **All files access** approval | No |
-| File/folder operations | Implemented for imported library items | Native rename, copy/move, create, delete and hide/unhide foundations | Native create, rename, delete, search and favorites foundations |
-| Media preview and playback | Browser-supported formats | Native supported image/audio/video/text | Quick Look, AVPlayer and text editor |
-| Private encrypted copies | Browser IndexedDB vault | Android Keystore vault | CryptoKit/Keychain vault |
-| App lock | Browser vault passphrase | Optional 1–64 character password or biometric-only lock (off by default) | Face ID, Touch ID or device passcode |
-| Offline operation | Cached web shell and stored local files | Native local functionality | Native local functionality |
-| Maturity | Deployed PWA; device-dependent | Alpha; physical-device acceptance pending | Alpha; physical-device acceptance pending |
+| Capability                                                  | Web / Home Screen PWA                   | Native Android alpha                                                     | Native iOS alpha                                                |
+| ----------------------------------------------------------- | --------------------------------------- | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| Installable app-like interface                              | Yes                                     | Yes, via APK                                                             | Yes, after Xcode signing                                        |
+| Local personal library                                      | Yes                                     | SAF-selected folders and internal shared-storage explorer                | App-owned Documents library                                     |
+| Device file import                                          | Browser file/folder picker              | Android Storage Access Framework                                         | Native Files and Photos pickers                                 |
+| Browse shared internal storage without choosing each folder | No                                      | Android 11+ after explicit **All files access** approval                 | No                                                              |
+| File/folder operations                                      | Implemented for imported library items  | Native rename, copy/move, create, delete and hide/unhide foundations     | Native create, rename, delete, search and favorites foundations |
+| Media preview and playback                                  | Browser-supported formats               | Native supported image/audio/video/text                                  | Quick Look, AVPlayer and text editor                            |
+| Private encrypted copies                                    | Browser IndexedDB vault                 | Android Keystore vault                                                   | CryptoKit/Keychain vault                                        |
+| App lock                                                    | Browser vault passphrase                | Optional 1–64 character password or biometric-only lock (off by default) | Face ID, Touch ID or device passcode                            |
+| Offline operation                                           | Cached web shell and stored local files | Native local functionality                                               | Native local functionality                                      |
+| Maturity                                                    | Deployed PWA; device-dependent          | Alpha; physical-device acceptance pending                                | Alpha; physical-device acceptance pending                       |
 
 **Storage access is controlled by the operating system.** No edition can bypass protected system folders or another app's private sandbox. In particular, iOS does not offer Android-style All files access, and the web app cannot silently enumerate a phone's filesystem.
 
@@ -63,7 +69,9 @@ The web edition is a responsive PWA built with React, TypeScript, Vite, Tailwind
 
 **Install on Android:** Open the live URL in Chrome and use **Install app** or **Add to Home Screen**. A PWABuilder package uses web capabilities and **does not** acquire native file-manager permissions.
 
-**Using the library:** Import files, open the Library, select an item to preview or play it, and use available item actions to organize, share, or export it. Browser storage can be cleared or evicted; export important files to a separate location.
+**Using the library:** Import files, open the Library, select an item to preview or play it, and use available item actions to organize, share, or export it. Filter the folder you are viewing, or open **Settings → Find duplicates** before tidying copies. Browser storage can be cleared or evicted; export important files to a separate location.
+
+Press `?` inside the app for the keyboard shortcut list. A skip link is the first control for keyboard and screen-reader users.
 
 ## Native Android application
 
@@ -159,9 +167,38 @@ media-manager/
 
 ## Roadmap
 
-Development priorities are **reliable storage onboarding**, native-device testing, scalable file lists, batch selection and operations, background copy/move with progress and cancellation, better media playback, stronger vault lifecycle testing, and improved accessibility. More advanced archive, network, and cloud capabilities will be introduced only after their implementations can be validated.
+Development priorities are **reliable storage onboarding**, native-device testing, scalable file lists, batch selection and operations, background copy/move with progress and cancellation, better media playback, stronger vault lifecycle testing, and continued accessibility work. More advanced archive, network, and cloud capabilities will be introduced only after their implementations can be validated.
 
 See [the platform audit](docs/PLATFORM-AUDIT.md) for feature gaps and engineering risks.
+
+## Accessibility
+
+The web app is built for keyboard use and assistive technology:
+
+- Skip link to the library, labeled search, and named places, tabs, and breadcrumbs.
+- Visible focus, current-page markers in navigation, and dialog focus that stays inside the open panel.
+- Text colors chosen for contrast on both the dark gold and daylight themes.
+- Motion is reduced when the operating system requests it.
+- File rows and cards expose their names, and selected items are announced.
+
+This is an ongoing product standard, not a formal conformance certificate.
+
+## Keyboard shortcuts
+
+| Action              | Shortcut                |
+| ------------------- | ----------------------- |
+| Search all files    | Ctrl+K or Command+K     |
+| Settings            | Ctrl+, or Command+,     |
+| Sidebar             | Ctrl+B or Command+B     |
+| New folder          | Ctrl+N or Command+N     |
+| Select all          | Ctrl+A or Command+A     |
+| Copy, cut, paste    | Ctrl+C, Ctrl+X, Ctrl+V  |
+| Open                | Enter                   |
+| Rename              | F2                      |
+| Move to trash       | Delete                  |
+| Up one folder       | Backspace or Command+Up |
+| Shortcut list       | ?                       |
+| Close the top panel | Esc                     |
 
 ## Security and platform boundaries
 

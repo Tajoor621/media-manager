@@ -33,7 +33,7 @@
   --elevated: #1b1b1f;
   --fg: #f4f1ea;
   --muted: #a8a29a;
-  --subtle: #71717a;
+  --subtle: #a1a1aa;
   --border: color-mix(in oklab, #c6a15b 18%, transparent);
   --gold: #c6a15b;
   --gold-fg: #14110c;
@@ -49,7 +49,7 @@ html.light {
   --elevated: #ebe4d4;
   --fg: #1a1712;
   --muted: #6b645b;
-  --subtle: #8a8378;
+  --subtle: #5c564c;
   --border: color-mix(in oklab, #8a6d2b 22%, transparent);
   --gold: #8a6d2b;
   --gold-fg: #fffdf8;
@@ -116,18 +116,63 @@ html.light {
   max-width: min(92vw, 100%);
 }
 
-.tok-kw { color: var(--gold); }
-.tok-str { color: #d4c4a0; }
-.tok-num { color: var(--silver); }
-.tok-cm { color: var(--subtle); font-style: italic; }
-.tok-fn { color: #e8dcc4; }
+.tok-kw {
+  color: var(--gold);
+}
+.tok-str {
+  color: #d4c4a0;
+}
+.tok-num {
+  color: var(--silver);
+}
+.tok-cm {
+  color: var(--subtle);
+  font-style: italic;
+}
+.tok-fn {
+  color: #e8dcc4;
+}
 
 @keyframes mm-load {
-  0% { transform: translateX(-120%); }
-  100% { transform: translateX(280%); }
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(280%);
+  }
 }
 .mm-load {
   animation: mm-load 1.15s var(--ease-smooth-out) infinite;
+}
+
+.skip-link {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link:focus {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: 80;
+  width: auto;
+  height: auto;
+  margin: 0;
+  overflow: visible;
+  clip: auto;
+  border-radius: 8px;
+  background: var(--gold);
+  color: var(--gold-fg);
+  padding: 0.6rem 0.9rem;
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
 @media (prefers-reduced-motion: reduce) {

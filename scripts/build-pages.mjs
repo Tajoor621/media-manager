@@ -7,6 +7,7 @@ import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { ensurePagesSeo, SITE_DESCRIPTION, SITE_TITLE } from "./pages-seo.mjs";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const outDir = join(root, "dist");
@@ -62,7 +63,8 @@ if (!existsSync(indexPath)) {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#0A0A0B" />
-    <title>Media Manager</title>
+    <title>${SITE_TITLE}</title>
+    <meta name="description" content="${SITE_DESCRIPTION}" />
     <link rel="icon" type="image/svg+xml" href="${basePath}favicon.svg" />
     <link rel="apple-touch-icon" href="${basePath}icon-180.png" />
     <link rel="manifest" href="${basePath}manifest.webmanifest" />
@@ -79,8 +81,12 @@ if (!existsSync(indexPath)) {
 
 // Keep browser-tab favicon aligned with the generated owner-supplied app icon.
 let brandedHtml = readFileSync(indexPath, "utf8");
-brandedHtml = brandedHtml.replace(/<link\\s+rel=["']icon["'][^>]*>/gi, "");
-brandedHtml = brandedHtml.replace("</head>", `<link rel="icon" type="image/png" href="${basePath}icon-192.png" /></head>`);
+brandedHtml = brandedHtml.replace(/<link\s+rel=["']icon["'][^>]*>/gi, "");
+brandedHtml = brandedHtml.replace(
+  "</head>",
+  `<link rel="icon" type="image/png" href="${basePath}icon-192.png" /></head>`,
+);
+brandedHtml = ensurePagesSeo(brandedHtml);
 writeFileSync(indexPath, brandedHtml);
 writeFileSync(join(outDir, "404.html"), readFileSync(indexPath));
 console.log(`GitHub Pages static site written to ${outDir}`);

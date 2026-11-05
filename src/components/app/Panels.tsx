@@ -1,9 +1,23 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Camera, Check, ChevronDown, ChevronRight, Cloud, Cpu, FolderOpen, HardDrive, Images, MemoryStick, Search } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
+import {
+  Camera,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Cloud,
+  Cpu,
+  FolderOpen,
+  HardDrive,
+  Images,
+  MemoryStick,
+  Search,
+} from "lucide-react";
 import { useFiles } from "@/lib/files/store";
 import { formatBytes } from "@/lib/files/format";
 import { viewerKind } from "@/lib/files/mime";
 import { Button, Input, Modal } from "@/components/ui";
+import { DUPLICATES_EVENT } from "./DuplicatesDialog";
+import { ShortcutList } from "./Shortcuts";
 import { FileGlyph } from "./file-icon";
 import { BrandMark } from "./Brand";
 import { PrivateVaultPanel } from "./PrivateVaultPanel";
@@ -20,7 +34,16 @@ import {
 import { useP2PRoom } from "@/lib/multiplayer/use-p2p-room";
 import { mimeFromName } from "@/lib/files/mime";
 import { cn } from "@/lib/utils";
-import { DEVICE_FILES_EVENT, DEVICE_PICK_EVENT, fsaUsable, hasDirectoryInput, prefersDirectoryInput, listTreePath, readGrantedFile, treeParent } from "@/lib/files/fs-access";
+import {
+  DEVICE_FILES_EVENT,
+  DEVICE_PICK_EVENT,
+  fsaUsable,
+  hasDirectoryInput,
+  prefersDirectoryInput,
+  listTreePath,
+  readGrantedFile,
+  treeParent,
+} from "@/lib/files/fs-access";
 import type { DeviceEntry } from "@/lib/files/types";
 import type { WellKnownDir } from "@/lib/files/fs-access";
 
@@ -41,7 +64,12 @@ export function SettingsPanel() {
   }, []);
 
   return (
-    <Modal open={open} onClose={() => useFiles.getState().setSettingsOpen(false)} title="Settings" wide>
+    <Modal
+      open={open}
+      onClose={() => useFiles.getState().setSettingsOpen(false)}
+      title="Settings"
+      wide
+    >
       <div className="space-y-6">
         <section>
           <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Appearance</h3>
@@ -74,7 +102,11 @@ export function SettingsPanel() {
           <StorageMeters />
           <LargestFiles />
           <div className="mt-3">
-            <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().persistStorage()}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void useFiles.getState().persistStorage()}
+            >
               Keep library on this device
             </Button>
           </div>
@@ -103,35 +135,26 @@ export function SettingsPanel() {
         <section>
           <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Cloud</h3>
           <p className="text-sm text-muted">
-            Google Drive lives in the sidebar. Dropbox and OneDrive work by opening their synced folders via
-            Device folder, or by uploading files into the Library.
+            Google Drive lives in the sidebar. Dropbox and OneDrive work by opening their synced
+            folders via Device folder, or by uploading files into the Library.
           </p>
         </section>
         <section>
           <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Shortcuts</h3>
-          <ul className="space-y-1.5 text-sm text-muted">
-            {[
-              ["⌘K / Ctrl+K", "Search all files"],
-              ["⌘, / Ctrl+,", "Open settings"],
-              ["⌘B / Ctrl+B", "Toggle sidebar"],
-              ["⌘N / Ctrl+N", "New folder"],
-              ["⌘A", "Select all"],
-              ["⌘C / ⌘X / ⌘V", "Copy, cut, paste"],
-              ["Enter", "Open"],
-              ["F2", "Rename"],
-              ["Delete", "Move to trash"],
-              ["Backspace / ⌘↑", "Up one folder"],
-              ["Esc", "Close viewer"],
-            ].map(([k, v]) => (
-              <li key={k} className="flex items-center justify-between gap-3">
-                <span>{v}</span>
-                <kbd className="rounded bg-elevated px-1.5 py-0.5 text-xs text-subtle hairline">{k}</kbd>
-              </li>
-            ))}
-          </ul>
+          <ShortcutList />
+          <Button
+            size="sm"
+            variant="secondary"
+            className="mt-3"
+            onClick={() => window.dispatchEvent(new CustomEvent("mm-shortcuts"))}
+          >
+            Open shortcut list
+          </Button>
         </section>
         <section>
-          <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">Install on your phone</h3>
+          <h3 className="mb-2 text-xs uppercase tracking-wider text-subtle">
+            Install on your phone
+          </h3>
           <p className="mb-3 text-sm text-muted">
             Publish this app first, then open it in the phone browser. Add to Home Screen for a
             fullscreen icon, offline library, and the 621 mark on the launcher.
@@ -188,20 +211,59 @@ export function SettingsPanel() {
             />
             Show hidden files
           </label>
-          <Button size="sm" variant="danger" onClick={() => setConfirmClear(true)}>
-            Clear library
-          </Button>
-          <p className="mt-2 text-xs text-subtle">Deletes local library items. Saved device folder handles remain in the browser where supported.</p>
-          <Modal open={confirmClear} onClose={() => setConfirmClear(false)} title="Clear local library?">
-            <p className="text-sm text-muted">Your imported library items will be removed. This cannot be undone. Device folder connections are preserved.</p>
+          <p className="mb-3 text-sm text-muted">
+            Find copies that share a name and size. The scan stays on this device.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => {
+                useFiles.getState().setSettingsOpen(false);
+                window.dispatchEvent(new CustomEvent(DUPLICATES_EVENT));
+              }}
+            >
+              Find duplicates
+            </Button>
+            <Button size="sm" variant="danger" onClick={() => setConfirmClear(true)}>
+              Clear library
+            </Button>
+          </div>
+          <p className="mt-2 text-xs text-subtle">
+            Deletes local library items. Saved device folder handles remain in the browser where
+            supported.
+          </p>
+          <Modal
+            open={confirmClear}
+            onClose={() => setConfirmClear(false)}
+            title="Clear local library?"
+          >
+            <p className="text-sm text-muted">
+              Your imported library items will be removed. This cannot be undone. Device folder
+              connections are preserved.
+            </p>
             <div className="mt-5 flex justify-end gap-2">
-              <Button variant="secondary" onClick={() => setConfirmClear(false)}>Cancel</Button>
-              <Button variant="danger" onClick={() => { setConfirmClear(false); void useFiles.getState().resetLibrary(); }}>Clear library</Button>
+              <Button variant="secondary" onClick={() => setConfirmClear(false)}>
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                onClick={() => {
+                  setConfirmClear(false);
+                  void useFiles.getState().resetLibrary();
+                }}
+              >
+                Clear library
+              </Button>
             </div>
           </Modal>
         </section>
         <section className="overflow-hidden rounded-xl bg-ink">
-          <BrandMark variant="lockup" className="mx-auto h-auto w-full max-w-xs" alt="Media Manager" />
+          <BrandMark
+            variant="lockup"
+            className="mx-auto h-auto w-full max-w-xs"
+            alt="Media Manager"
+          />
         </section>
       </div>
     </Modal>
@@ -212,17 +274,81 @@ interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
 }
 
+type CommandRow = { id: string; label: string; hint?: string; run: () => void; icon?: ReactNode };
+
 export function CommandPalette() {
   const open = useFiles((s) => s.commandOpen);
   const [q, setQ] = useState("");
+  const [active, setActive] = useState(0);
   const nodeMap = useFiles((s) => s.nodes);
   const nodes = useMemo(() => Object.values(nodeMap), [nodeMap]);
-  const hits = useMemo(() => {
-    const n = q.trim().toLowerCase();
-    if (!n) return nodes.filter((x) => x.kind === "file").slice(0, 12);
-    return nodes.filter((x) => x.name.toLowerCase().includes(n)).slice(0, 20);
+  const rows = useMemo(() => {
+    const query = q.trim().toLowerCase();
+    const actions: CommandRow[] = [
+      {
+        id: "action-shortcuts",
+        label: "Keyboard shortcuts",
+        hint: "?",
+        run: () => {
+          useFiles.getState().setCommandOpen(false);
+          window.dispatchEvent(new CustomEvent("mm-shortcuts"));
+        },
+      },
+      {
+        id: "action-duplicates",
+        label: "Find duplicate files",
+        run: () => {
+          useFiles.getState().setCommandOpen(false);
+          window.dispatchEvent(new CustomEvent(DUPLICATES_EVENT));
+        },
+      },
+      {
+        id: "action-settings",
+        label: "Settings",
+        run: () => {
+          useFiles.getState().setCommandOpen(false);
+          useFiles.getState().setSettingsOpen(true);
+        },
+      },
+    ].filter((action) => !query || action.label.toLowerCase().includes(query));
+    const hits = (
+      query
+        ? nodes.filter((node) => node.name.toLowerCase().includes(query))
+        : nodes.filter((node) => node.kind === "file")
+    )
+      .slice(0, query ? 20 : 12)
+      .map((node) => ({
+        id: node.id,
+        label: node.name,
+        hint: node.kind === "folder" ? "Folder" : undefined,
+        run: () => {
+          if (node.kind === "folder") useFiles.getState().openFolder(node.id);
+          else useFiles.getState().openViewer(node.id);
+          useFiles.getState().setCommandOpen(false);
+        },
+        icon: <FileGlyph kind={viewerKind(node.mime, node.name)} folder={node.kind === "folder"} />,
+      }));
+    return query ? [...actions, ...hits] : [...hits, ...actions];
   }, [q, nodes]);
+  const index = rows.length ? Math.min(active, rows.length - 1) : 0;
+
+  useEffect(() => {
+    setActive(0);
+  }, [q, open]);
+
   if (!open) return null;
+  const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setActive((current) => Math.min(rows.length - 1, current + 1));
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setActive((current) => Math.max(0, current - 1));
+    } else if (event.key === "Enter" && rows[index]) {
+      event.preventDefault();
+      rows[index].run();
+    }
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center p-4 pt-[12vh]">
       <button
@@ -231,31 +357,52 @@ export function CommandPalette() {
         aria-label="Close search"
         onClick={() => useFiles.getState().setCommandOpen(false)}
       />
-      <div className="relative w-full max-w-lg overflow-hidden rounded-xl bg-card shadow-2xl hairline">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Search all files"
+        className="relative w-full max-w-lg overflow-hidden rounded-xl bg-card shadow-2xl hairline"
+        onKeyDown={onKeyDown}
+      >
         <div className="flex items-center gap-2 border-b border-border px-3">
-          <Search className="size-4 text-gold" />
+          <Search className="size-4 text-gold" aria-hidden="true" />
           <input
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search every file"
+            aria-label="Search every file"
+            aria-activedescendant={rows[index] ? `mm-cmd-${rows[index].id}` : undefined}
+            aria-controls="mm-command-results"
             className="h-12 flex-1 bg-transparent text-sm outline-none"
           />
         </div>
-        <ul className="max-h-80 overflow-auto py-1">
-          {hits.map((n) => (
-            <li key={n.id}>
+        <ul
+          id="mm-command-results"
+          role="listbox"
+          aria-label="Search results"
+          className="max-h-80 overflow-auto py-1"
+        >
+          {rows.length === 0 && (
+            <li className="px-3 py-4 text-sm text-muted">No matching files.</li>
+          )}
+          {rows.map((row, rowIndex) => (
+            <li key={row.id} role="presentation">
               <button
+                id={`mm-cmd-${row.id}`}
                 type="button"
-                className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-elevated"
-                onClick={() => {
-                  if (n.kind === "folder") useFiles.getState().openFolder(n.id);
-                  else useFiles.getState().openViewer(n.id);
-                  useFiles.getState().setCommandOpen(false);
-                }}
+                role="option"
+                aria-selected={rowIndex === index}
+                className={cn(
+                  "flex w-full items-center gap-3 px-3 py-2.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-gold/50",
+                  rowIndex === index ? "bg-elevated" : "hover:bg-elevated",
+                )}
+                onMouseEnter={() => setActive(rowIndex)}
+                onClick={row.run}
               >
-                <FileGlyph kind={viewerKind(n.mime, n.name)} folder={n.kind === "folder"} />
-                <span className="truncate text-sm">{n.name}</span>
+                {row.icon ?? <Search className="size-4 text-gold" aria-hidden="true" />}
+                <span className="min-w-0 flex-1 truncate text-sm">{row.label}</span>
+                {row.hint && <span className="text-xs text-subtle">{row.hint}</span>}
               </button>
             </li>
           ))}
@@ -295,7 +442,9 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
     ramUsed ? `${formatBytes(ramUsed)} JS heap used` : null,
     hardware?.cores ? `${hardware.cores} logical CPU cores (not RAM)` : null,
     "System-wide RAM access is not available to web apps",
-  ].filter(Boolean).join(" · ");
+  ]
+    .filter(Boolean)
+    .join(" · ");
   const ramPct = ramTotal && ramUsed ? Math.min(100, (ramUsed / ramTotal) * 100) : 0;
 
   const appQuota = hardware?.romQuota || quotaBytes;
@@ -311,9 +460,31 @@ export function StorageMeters({ compact }: { compact?: boolean }) {
 
   return (
     <div className={cn("grid gap-2", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-3")}>
-      <MeterCard icon={<MemoryStick className="size-4 text-gold" />} label="RAM information" value={ramLabel} detail={ramDetail} pct={ramPct} />
-      <MeterCard icon={<Cpu className="size-4 text-gold" />} label="App storage (not ROM)" value={formatBytes(appUsage)} detail={appDetail} pct={appPct} />
-      <MeterCard icon={<HardDrive className="size-4 text-gold" />} label="Selected device files" value={ready || deviceCount ? `${formatBytes(deviceBytes)}${scanning ? "…" : ""}` : "No files selected"} detail={selectedDetail} pct={0} />
+      <MeterCard
+        icon={<MemoryStick className="size-4 text-gold" />}
+        label="RAM information"
+        value={ramLabel}
+        detail={ramDetail}
+        pct={ramPct}
+      />
+      <MeterCard
+        icon={<Cpu className="size-4 text-gold" />}
+        label="App storage (not ROM)"
+        value={formatBytes(appUsage)}
+        detail={appDetail}
+        pct={appPct}
+      />
+      <MeterCard
+        icon={<HardDrive className="size-4 text-gold" />}
+        label="Selected device files"
+        value={
+          ready || deviceCount
+            ? `${formatBytes(deviceBytes)}${scanning ? "…" : ""}`
+            : "No files selected"
+        }
+        detail={selectedDetail}
+        pct={0}
+      />
     </div>
   );
 }
@@ -348,7 +519,11 @@ function MeterCard({
 
 function fileStamp(ts: number) {
   if (!ts) return "";
-  return new Date(ts).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  return new Date(ts).toLocaleDateString(undefined, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  });
 }
 
 function DeviceRow({
@@ -426,7 +601,11 @@ function DeviceRow({
       onClick={entry.kind === "folder" ? onFolder : openFile}
     >
       {entry.kind === "folder" ? (
-        open ? <ChevronDown className="size-4 shrink-0 text-muted" /> : <ChevronRight className="size-4 shrink-0 text-muted" />
+        open ? (
+          <ChevronDown className="size-4 shrink-0 text-muted" />
+        ) : (
+          <ChevronRight className="size-4 shrink-0 text-muted" />
+        )
       ) : (
         <span className="size-4 shrink-0" />
       )}
@@ -452,7 +631,9 @@ function DeviceRow({
               ? `${childFiles.toLocaleString()} files${childFolders ? ` · ${childFolders.toLocaleString()} folders` : ""}`
               : fileStamp(entry.lastModified) || entry.mime}
           </span>
-          <span className="shrink-0 tabular-nums">{entry.kind === "file" ? formatBytes(entry.size) : ""}</span>
+          <span className="shrink-0 tabular-nums">
+            {entry.kind === "file" ? formatBytes(entry.size) : ""}
+          </span>
         </span>
       </span>
       {selected ? <Check className="size-4 shrink-0 text-gold" /> : null}
@@ -493,7 +674,13 @@ function DeviceTree({
               onFolder={() => onToggle(entry.path)}
             />
             {expanded && (
-              <DeviceTree parent={entry.path} depth={depth + 1} openPaths={openPaths} selected={selected} onToggle={onToggle} />
+              <DeviceTree
+                parent={entry.path}
+                depth={depth + 1}
+                openPaths={openPaths}
+                selected={selected}
+                onToggle={onToggle}
+              />
             )}
           </li>
         );
@@ -531,7 +718,11 @@ function StripThumb({ entry }: { entry: DeviceEntry }) {
   }, [entry.path]);
   if (!thumb) return null;
   return (
-    <button type="button" className="shrink-0" onClick={() => void useFiles.getState().openDeviceFile(entry.path)}>
+    <button
+      type="button"
+      className="shrink-0"
+      onClick={() => void useFiles.getState().openDeviceFile(entry.path)}
+    >
       <img src={thumb} alt={entry.name} className="size-16 rounded object-cover" />
     </button>
   );
@@ -604,10 +795,13 @@ export function DevicePane() {
   const qn = q.trim().toLowerCase();
   const filtered = qn
     ? (index.length ? index : entries).filter(
-        (e) => e.kind === "file" && (e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn)),
+        (e) =>
+          e.kind === "file" &&
+          (e.name.toLowerCase().includes(qn) || e.path.toLowerCase().includes(qn)),
       )
     : entries;
-  const crumb = mode === "tree" ? [rootName, ...path.split("/").filter(Boolean)] : stack.map((s) => s.name);
+  const crumb =
+    mode === "tree" ? [rootName, ...path.split("/").filter(Boolean)] : stack.map((s) => s.name);
   const ready = status === "ready";
   const quota = useFiles((s) => s.quotaBytes);
   const reveal = (next: string) => {
@@ -650,7 +844,10 @@ export function DevicePane() {
             const files = e.target.files ? [...e.target.files] : [];
             e.target.value = "";
             if (files.length) {
-              void useFiles.getState().ingestFiles(files).then(() => useFiles.getState().goPlace("internal"));
+              void useFiles
+                .getState()
+                .ingestFiles(files)
+                .then(() => useFiles.getState().goPlace("internal"));
             }
           }}
         />
@@ -663,7 +860,10 @@ export function DevicePane() {
             const files = e.target.files ? [...e.target.files] : [];
             e.target.value = "";
             if (files.length) {
-              void useFiles.getState().ingestFiles(files).then(() => useFiles.getState().goPlace("internal"));
+              void useFiles
+                .getState()
+                .ingestFiles(files)
+                .then(() => useFiles.getState().goPlace("internal"));
             }
           }}
         />
@@ -677,7 +877,10 @@ export function DevicePane() {
             const files = e.target.files ? [...e.target.files] : [];
             e.target.value = "";
             if (files.length) {
-              void useFiles.getState().ingestFiles(files).then(() => useFiles.getState().goPlace("internal"));
+              void useFiles
+                .getState()
+                .ingestFiles(files)
+                .then(() => useFiles.getState().goPlace("internal"));
             }
           }}
         />
@@ -688,25 +891,34 @@ export function DevicePane() {
           </div>
           <p className="text-sm leading-relaxed text-muted">
             Import your photos, videos, music, documents and folders once, then open and organize
-            those copies inside Media Manager. iOS does not permit a web app to scan your entire phone.
+            those copies inside Media Manager. iOS does not permit a web app to scan your entire
+            phone.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button onClick={() => filesRef.current?.click()}>Import files</Button>
-            <Button variant="secondary" onClick={() => cameraRef.current?.click()}>Import photos & videos</Button>
-            <Button variant="secondary" onClick={() => dirRef.current?.click()}>Import folder</Button>
-            <Button variant="secondary" onClick={() => useFiles.getState().goPlace("internal")}>Open My Library</Button>
+            <Button variant="secondary" onClick={() => cameraRef.current?.click()}>
+              Import photos & videos
+            </Button>
+            <Button variant="secondary" onClick={() => dirRef.current?.click()}>
+              Import folder
+            </Button>
+            <Button variant="secondary" onClick={() => useFiles.getState().goPlace("internal")}>
+              Open My Library
+            </Button>
           </div>
           <p className="mt-3 text-xs text-subtle">
-            Imports are private local copies. Export important files regularly: iOS may remove website
-            storage, and Safari and an installed Home Screen app may not share the same library.
+            Imports are private local copies. Export important files regularly: iOS may remove
+            website storage, and Safari and an installed Home Screen app may not share the same
+            library.
           </p>
         </div>
         <StorageMeters />
         <div className="rounded-xl border border-border bg-card p-4">
           <h3 className="font-medium text-foreground">For a fully native iPhone experience</h3>
           <p className="mt-2 text-sm text-muted">
-            A separate SwiftUI iOS edition is under development. It uses native Files and Photos pickers,
-            Quick Look, AVPlayer and device authentication; it is not installed through Safari.
+            A separate SwiftUI iOS edition is under development. It uses native Files and Photos
+            pickers, Quick Look, AVPlayer and device authentication; it is not installed through
+            Safari.
           </p>
         </div>
       </div>
@@ -762,7 +974,13 @@ export function DevicePane() {
       <StorageMeters />
 
       <div className="mt-4 flex flex-wrap gap-2">
-        <Button size="sm" onClick={() => { if (status === "need-gesture") void useFiles.getState().resumeDeviceAccess(); else grantFolder(); }}>
+        <Button
+          size="sm"
+          onClick={() => {
+            if (status === "need-gesture") void useFiles.getState().resumeDeviceAccess();
+            else grantFolder();
+          }}
+        >
           {status === "need-gesture" ? "Resume folder access" : "Choose a device folder"}
         </Button>
         <Button size="sm" variant="secondary" onClick={() => grantFolder()}>
@@ -790,25 +1008,25 @@ export function DevicePane() {
             ["documents", "Documents"],
           ] as const
         ).map(([id, label]) => (
-          <Button
-            key={id}
-            size="sm"
-            variant="ghost"
-            onClick={() => grantFolder(id)}
-          >
+          <Button key={id} size="sm" variant="ghost" onClick={() => grantFolder(id)}>
             {label}
           </Button>
         ))}
       </div>
       {!ready && (
         <p className="mt-3 max-w-xl text-xs text-muted">
-          Choose a folder or files using your phone’s system picker. Only selected content becomes available; Android and iOS do not grant whole-phone access to a web app. A folder may need to be selected again after restarting.
+          Choose a folder or files using your phone’s system picker. Only selected content becomes
+          available; Android and iOS do not grant whole-phone access to a web app. A folder may need
+          to be selected again after restarting.
         </p>
       )}
       {volumes.length > 0 && (
         <ul className="mt-3 flex flex-wrap gap-2">
           {volumes.map((v) => (
-            <li key={v.name} className="rounded-full bg-elevated px-3 py-1 text-xs text-muted hairline">
+            <li
+              key={v.name}
+              className="rounded-full bg-elevated px-3 py-1 text-xs text-muted hairline"
+            >
               {v.name}
               {v.files ? ` · ${v.files.toLocaleString()} files · ${formatBytes(v.bytes)}` : ""}
             </li>
@@ -844,13 +1062,16 @@ export function DevicePane() {
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-background">
               <div
                 className="h-full bg-gold"
-                style={{ width: `${quota ? Math.min(100, Math.max(4, Math.round((bytes / quota) * 100))) : 8}%` }}
+                style={{
+                  width: `${quota ? Math.min(100, Math.max(4, Math.round((bytes / quota) * 100))) : 8}%`,
+                }}
               />
             </div>
           </div>
           <div className="mt-3 flex gap-1 overflow-x-auto">
             {crumb.map((label, i) => {
-              const next = mode === "tree" ? path.split("/").filter(Boolean).slice(0, i).join("/") : "";
+              const next =
+                mode === "tree" ? path.split("/").filter(Boolean).slice(0, i).join("/") : "";
               const active = i === crumb.length - 1;
               return (
                 <button
@@ -870,15 +1091,28 @@ export function DevicePane() {
             })}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            <Button size="sm" variant="ghost" onClick={() => void useFiles.getState().deviceUp()} disabled={crumb.length <= 1}>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void useFiles.getState().deviceUp()}
+              disabled={crumb.length <= 1}
+            >
               Up
             </Button>
-            <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().importDeviceFolder()}>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => void useFiles.getState().importDeviceFolder()}
+            >
               Copy into library
             </Button>
           </div>
           <div className="mt-3">
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search files in this storage" />
+            <Input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Search files in this storage"
+            />
           </div>
           <div className="mt-3 overflow-hidden rounded-lg hairline">
             {qn ? (
@@ -900,7 +1134,13 @@ export function DevicePane() {
                 </ul>
               )
             ) : mode === "tree" ? (
-              <DeviceTree parent="" depth={0} openPaths={openPaths} selected={selected} onToggle={toggleFolder} />
+              <DeviceTree
+                parent=""
+                depth={0}
+                openPaths={openPaths}
+                selected={selected}
+                onToggle={toggleFolder}
+              />
             ) : (
               <ul>
                 {entries.map((e) => (
@@ -932,7 +1172,8 @@ export function DevicePane() {
           <HardDrive className="size-8 text-gold" />
           <h2 className="text-lg font-medium">Resume {rootName}</h2>
           <p className="max-w-md text-sm text-muted">
-            This folder was connected previously. Tap Continue to request access again if your browser requires it, or choose a different folder above.
+            This folder was connected previously. Tap Continue to request access again if your
+            browser requires it, or choose a different folder above.
           </p>
           <Button onClick={() => void useFiles.getState().resumeDeviceAccess()}>
             <FolderOpen className="size-4" />
@@ -944,7 +1185,9 @@ export function DevicePane() {
           <HardDrive className="size-8 text-gold" />
           <h2 className="text-lg font-medium">Browse files on this phone</h2>
           <p className="max-w-md text-sm text-muted">
-            Select a supported folder or individual files. Android may block top-level storage folders, and iPhone Safari uses its Files picker. This does not request unrestricted device permission.
+            Select a supported folder or individual files. Android may block top-level storage
+            folders, and iPhone Safari uses its Files picker. This does not request unrestricted
+            device permission.
           </p>
           <Button onClick={() => grantFolder()}>
             <FolderOpen className="size-4" />
@@ -973,10 +1216,20 @@ export function CloudPane() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex items-center gap-2 px-3 py-2 sm:px-5">
-        <Button size="sm" variant="ghost" onClick={() => { useFiles.getState().driveUp(); void loadDrive(useFiles.getState().driveFolderId); }} disabled={path.length <= 1}>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={() => {
+            useFiles.getState().driveUp();
+            void loadDrive(useFiles.getState().driveFolderId);
+          }}
+          disabled={path.length <= 1}
+        >
           Up
         </Button>
-        <span className="min-w-0 truncate text-sm text-muted">{path.map((p) => p.name).join(" / ")}</span>
+        <span className="min-w-0 truncate text-sm text-muted">
+          {path.map((p) => p.name).join(" / ")}
+        </span>
         <form
           className="ml-auto flex max-w-xs flex-1 gap-2"
           onSubmit={(e) => {
@@ -984,7 +1237,12 @@ export function CloudPane() {
             void runSearch(q);
           }}
         >
-          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search Drive" className="h-9" />
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search Drive"
+            className="h-9"
+          />
         </form>
       </div>
       {status === "loading" || status === "pending" ? (
@@ -999,7 +1257,10 @@ export function CloudPane() {
         <Hint
           icon={<Cloud className="size-8 text-gold" />}
           title="Drive unavailable"
-          body={err ?? "Could not list files. Open this app from Grok with Drive connected, or keep using Internal Storage."}
+          body={
+            err ??
+            "Could not list files. Open this app from Grok with Drive connected, or keep using Internal Storage."
+          }
           action="Retry"
           onAction={() => void loadDrive(folderId)}
         />
@@ -1023,7 +1284,9 @@ export function CloudPane() {
                   <FileGlyph kind={viewerKind(it.mimeType, it.name)} folder={it.isFolder} />
                   <span className="truncate text-sm">{it.name}</span>
                 </span>
-                <span className="text-xs text-subtle">{it.isFolder ? "Folder" : formatBytes(it.size)}</span>
+                <span className="text-xs text-subtle">
+                  {it.isFolder ? "Folder" : formatBytes(it.size)}
+                </span>
               </button>
             </li>
           ))}
@@ -1059,13 +1322,17 @@ async function loadDrive(folderId: string) {
     return;
   }
   if (isLoginRequired(result)) {
-    useFiles.getState().setDriveItems([], "login", classifyCallToolError(result)?.message ?? "Sign in required");
+    useFiles
+      .getState()
+      .setDriveItems([], "login", classifyCallToolError(result)?.message ?? "Sign in required");
     redirectToLoginIfRequired(result);
     return;
   }
   if (!result.ok) {
     const classified = classifyCallToolError(result);
-    useFiles.getState().setDriveItems([], "error", classified?.message ?? result.errorMessage ?? "Drive error");
+    useFiles
+      .getState()
+      .setDriveItems([], "error", classified?.message ?? result.errorMessage ?? "Drive error");
     return;
   }
   useFiles.getState().setDriveItems(normalizeDriveItems(result.data), "ready");
@@ -1083,7 +1350,9 @@ async function runSearch(query: string) {
 }
 
 async function importDrive(fileId: string, name: string, mime: string) {
-  const tid = useFiles.getState().addTransfer({ name, kind: "cloud", status: "running", progress: 30 });
+  const tid = useFiles
+    .getState()
+    .addTransfer({ name, kind: "cloud", status: "running", progress: 30 });
   const result = unpackDrive(await readDriveFile({ data: { fileId } }));
   if (!result.ok) {
     useFiles.getState().patchTransfer(tid, { status: "error", detail: result.errorMessage });
@@ -1098,7 +1367,9 @@ async function importDrive(fileId: string, name: string, mime: string) {
   } else if (text) {
     file = new File([text], name, { type: mime || mimeFromName(name) });
   } else {
-    file = new File([JSON.stringify(result.data, null, 2)], `${name}.json`, { type: "application/json" });
+    file = new File([JSON.stringify(result.data, null, 2)], `${name}.json`, {
+      type: "application/json",
+    });
   }
   await useFiles.getState().ingestFiles([file]);
   useFiles.getState().patchTransfer(tid, { status: "done", progress: 100 });
@@ -1113,11 +1384,16 @@ export function NearbyPanel() {
 
   if (!open) return null;
   return (
-    <Modal open={open} onClose={() => useFiles.getState().setNearbyOpen(false)} title="Nearby share">
+    <Modal
+      open={open}
+      onClose={() => useFiles.getState().setNearbyOpen(false)}
+      title="Nearby share"
+    >
       {!room ? (
         <div className="space-y-4">
           <p className="text-sm text-muted">
-            Two devices on this app join the same room code. Files travel peer-to-peer over WebRTC — nothing is stored on a server.
+            Two devices on this app join the same room code. Files travel peer-to-peer over WebRTC —
+            nothing is stored on a server.
           </p>
           <div className="rounded-lg bg-elevated p-4 text-center hairline">
             <p className="text-xs uppercase tracking-wider text-subtle">Your room</p>
@@ -1127,8 +1403,15 @@ export function NearbyPanel() {
             Host this room
           </Button>
           <div className="flex gap-2">
-            <Input value={join} onChange={(e) => setJoin(e.target.value)} placeholder="Enter code" />
-            <Button variant="secondary" onClick={() => join.trim() && setRoom(`mm${join.trim().toLowerCase()}`)}>
+            <Input
+              value={join}
+              onChange={(e) => setJoin(e.target.value)}
+              placeholder="Enter code"
+            />
+            <Button
+              variant="secondary"
+              onClick={() => join.trim() && setRoom(`mm${join.trim().toLowerCase()}`)}
+            >
               Join
             </Button>
           </div>
@@ -1159,7 +1442,10 @@ function NearbyRoom({
 }) {
   const p2p = useP2PRoom({ room, name: "Media Manager" });
   const [log, setLog] = useState<string[]>([]);
-  const incoming = useMemo(() => new Map<string, { name: string; chunks: string[]; n: number }>(), []);
+  const incoming = useMemo(
+    () => new Map<string, { name: string; chunks: string[]; n: number }>(),
+    [],
+  );
 
   useEffect(() => {
     return p2p.onMessage((_from, data) => {
@@ -1216,7 +1502,8 @@ function NearbyRoom({
   return (
     <div className="space-y-3">
       <p className={cn("text-sm", p2p.joined ? "text-gold" : "text-muted")}>
-        {p2p.joined ? "Room live" : "Joining…"} · {p2p.peers.length} peer{p2p.peers.length === 1 ? "" : "s"}
+        {p2p.joined ? "Room live" : "Joining…"} · {p2p.peers.length} peer
+        {p2p.peers.length === 1 ? "" : "s"}
       </p>
       <ul className="text-xs text-muted">
         {p2p.peers.map((p) => (
@@ -1288,9 +1575,7 @@ function Hint({
       {icon}
       <h2 className="text-lg font-medium">{title}</h2>
       <p className="max-w-md text-sm text-muted">{body}</p>
-      {action && onAction && (
-        <Button onClick={onAction}>{action}</Button>
-      )}
+      {action && onAction && <Button onClick={onAction}>{action}</Button>}
     </div>
   );
 }

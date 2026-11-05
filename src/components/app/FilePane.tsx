@@ -1,16 +1,25 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import {
-  Check,
-  Film,
-  MoreVertical,
-  Star,
-  Bookmark,
-} from "lucide-react";
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
+import { Check, Film, MoreVertical, Star, Bookmark } from "lucide-react";
 import { objectUrlFor, useFiles } from "@/lib/files/store";
 import { useShallow } from "zustand/react/shallow";
 import { viewerKind } from "@/lib/files/mime";
 import { formatBytes, formatDate } from "@/lib/files/format";
-import { FOLDER_IDS, ROOT_ID, TRASH_ID, type FileNode, type PlaceId, type ViewerKind } from "@/lib/files/types";
+import {
+  FOLDER_IDS,
+  ROOT_ID,
+  TRASH_ID,
+  type FileNode,
+  type PlaceId,
+  type ViewerKind,
+} from "@/lib/files/types";
 import { FileGlyph } from "./file-icon";
 import { LuxuryEmptyState } from "./LuxuryEmptyState";
 import { cn } from "@/lib/utils";
@@ -31,6 +40,7 @@ export function FilePane() {
   const shown = isHome ? nodes.filter((n) => !systemFolders.has(n.id)) : nodes;
   const gallery = (place === "photos" || place === "videos") && viewMode === "grid" && !search;
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null);
+  const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [dropOver, setDropOver] = useState(false);
   const [pull, setPull] = useState(0);
   const pullStart = useRef(0);
@@ -51,6 +61,12 @@ export function FilePane() {
     window.addEventListener("click", close);
     return () => window.removeEventListener("click", close);
   }, []);
+
+  useEffect(() => {
+    setKindFilter("all");
+  }, [place, folderId]);
+
+  const filtered = shown.filter((node) => matchesKind(node, kindFilter));
 
   return (
     <div
@@ -90,7 +106,10 @@ export function FilePane() {
       }}
     >
       {pull > 8 && (
-        <div className="flex items-end justify-center pb-2 text-xs text-gold" style={{ height: pull }}>
+        <div
+          className="flex items-end justify-center pb-2 text-xs text-gold"
+          style={{ height: pull }}
+        >
           {pull > 52 ? "Release to refresh" : "Pull to refresh"}
         </div>
       )}
@@ -101,16 +120,23 @@ export function FilePane() {
       )}
       {isHome && <HomeDashboard />}
       {isHome && <RecentsRail />}
-      {!shown.length ? (
-        <Empty search={search} place={place} />
+      {shown.length > 0 && <KindFilters value={kindFilter} onChange={setKindFilter} />}
+      {!filtered.length ? (
+        shown.length > 0 ? (
+          <FilterEmpty onClear={() => setKindFilter("all")} />
+        ) : (
+          <Empty search={search} place={place} />
+        )
       ) : viewMode === "grid" ? (
         <div
           className={cn(
             "grid gap-3",
-            gallery ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6",
+            gallery
+              ? "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6"
+              : "grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-6",
           )}
         >
-          {shown.map((n) => (
+          {filtered.map((n) => (
             <GridCard
               key={n.id}
               node={n}
@@ -130,18 +156,30 @@ export function FilePane() {
         <div className="overflow-hidden rounded-lg hairline">
           {viewMode === "details" && (
             <div className="hidden grid-cols-[1fr_120px_140px] gap-2 border-b border-border px-3 py-2 text-xs uppercase tracking-wider text-subtle sm:grid">
-              <button type="button" className="text-left hover:text-gold" onClick={() => useFiles.getState().setSort("name")}>
+              <button
+                type="button"
+                className="text-left hover:text-gold"
+                onClick={() => useFiles.getState().setSort("name")}
+              >
                 Name
               </button>
-              <button type="button" className="text-left hover:text-gold" onClick={() => useFiles.getState().setSort("size")}>
+              <button
+                type="button"
+                className="text-left hover:text-gold"
+                onClick={() => useFiles.getState().setSort("size")}
+              >
                 Size
               </button>
-              <button type="button" className="text-left hover:text-gold" onClick={() => useFiles.getState().setSort("date")}>
+              <button
+                type="button"
+                className="text-left hover:text-gold"
+                onClick={() => useFiles.getState().setSort("date")}
+              >
                 Modified
               </button>
             </div>
           )}
-          {shown.map((n) => (
+          {filtered.map((n) => (
             <ListRow
               key={n.id}
               node={n}
@@ -166,7 +204,9 @@ export function FilePane() {
 function HomeDashboard() {
   const files = useFiles(
     useShallow((s) =>
-      Object.values(s.nodes).filter((n) => n.kind === "file" && n.parentId !== TRASH_ID && n.id !== TRASH_ID),
+      Object.values(s.nodes).filter(
+        (n) => n.kind === "file" && n.parentId !== TRASH_ID && n.id !== TRASH_ID,
+      ),
     ),
   );
   const storage = useFiles((s) => s.storageBytes);
@@ -178,7 +218,13 @@ function HomeDashboard() {
     return k === "text" || k === "pdf";
   });
   const pick = (arr: FileNode[]) => arr.find((n) => n.favorite) ?? arr[0];
-  const tiles: { place: PlaceId; label: string; count: number; cover?: FileNode; kind: ViewerKind }[] = [
+  const tiles: {
+    place: PlaceId;
+    label: string;
+    count: number;
+    cover?: FileNode;
+    kind: ViewerKind;
+  }[] = [
     { place: "photos", label: "Photos", count: photos.length, cover: pick(photos), kind: "image" },
     { place: "videos", label: "Videos", count: videos.length, cover: pick(videos), kind: "video" },
     { place: "music", label: "Music", count: music.length, cover: pick(music), kind: "audio" },
@@ -218,7 +264,8 @@ function HomeDashboard() {
                 <button
                   key={t.place}
                   type="button"
-                  className="overflow-hidden rounded-lg bg-card text-left hairline"
+                  aria-label={`${t.label}, ${t.count} ${t.count === 1 ? "item" : "items"}`}
+                  className="overflow-hidden rounded-lg bg-card text-left hairline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50"
                   onClick={(e) => {
                     e.stopPropagation();
                     useFiles.getState().goPlace(t.place);
@@ -254,6 +301,79 @@ function HomeDashboard() {
   );
 }
 
+type KindFilter = "all" | "folders" | "images" | "videos" | "audio" | "documents";
+
+const KIND_FILTERS: { id: KindFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "folders", label: "Folders" },
+  { id: "images", label: "Photos" },
+  { id: "videos", label: "Videos" },
+  { id: "audio", label: "Audio" },
+  { id: "documents", label: "Documents" },
+];
+
+function matchesKind(node: FileNode, filter: KindFilter) {
+  if (filter === "all") return true;
+  if (filter === "folders") return node.kind === "folder";
+  if (node.kind !== "file") return false;
+  const kind = viewerKind(node.mime, node.name);
+  if (filter === "images") return kind === "image";
+  if (filter === "videos") return kind === "video";
+  if (filter === "audio") return kind === "audio";
+  return kind === "text" || kind === "pdf";
+}
+
+function KindFilters({
+  value,
+  onChange,
+}: {
+  value: KindFilter;
+  onChange: (next: KindFilter) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Filter by type"
+      className="mb-3 flex gap-2 overflow-x-auto pb-1"
+      onClick={(event) => event.stopPropagation()}
+    >
+      {KIND_FILTERS.map((filter) => (
+        <button
+          key={filter.id}
+          type="button"
+          aria-pressed={value === filter.id}
+          className={cn(
+            "h-8 shrink-0 rounded-full px-3 text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50",
+            value === filter.id
+              ? "bg-gold text-gold-fg"
+              : "text-muted hairline hover:text-foreground",
+          )}
+          onClick={() => onChange(filter.id)}
+        >
+          {filter.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function FilterEmpty({ onClear }: { onClear: () => void }) {
+  return (
+    <div className="flex min-h-48 flex-col items-center justify-center gap-3 text-center">
+      <p className="text-sm text-muted">Nothing in this filter.</p>
+      <Button
+        variant="secondary"
+        onClick={(event) => {
+          event.stopPropagation();
+          onClear();
+        }}
+      >
+        Show all
+      </Button>
+    </div>
+  );
+}
+
 function Empty({ search, place }: { search: string; place: string }) {
   return <LuxuryEmptyState place={place} search={search} />;
 }
@@ -282,7 +402,12 @@ function GridCard({
   selectMode: boolean;
   gallery?: boolean;
   childCount?: number;
-  onMenu: (e: { preventDefault: () => void; stopPropagation: () => void; clientX: number; clientY: number }) => void;
+  onMenu: (e: {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+    clientX: number;
+    clientY: number;
+  }) => void;
 }) {
   const kind = viewerKind(node.mime, node.name);
   const [over, setOver] = useState(false);
@@ -342,8 +467,9 @@ function GridCard({
         const files = [...e.dataTransfer.files];
         if (files.length) void useFiles.getState().ingestFiles(files, node.id);
       }}
+      aria-label={`${selected ? "Selected " : ""}${node.kind === "folder" ? "Folder" : "File"} ${node.name}`}
       className={cn(
-        "group relative flex cursor-pointer flex-col overflow-hidden rounded-lg bg-card text-left hairline transition-colors duration-200",
+        "group relative flex cursor-pointer flex-col overflow-hidden rounded-lg bg-card text-left hairline transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50",
         selected && "ring-2 ring-gold",
         over && "ring-2 ring-gold bg-gold/10",
       )}
@@ -363,7 +489,10 @@ function GridCard({
             <FileGlyph kind={kind} folder={node.kind === "folder"} className="size-8" />
           </div>
         )}
-        {node.favorite && <Star className="absolute top-2 left-2 size-3.5 fill-gold text-gold" />}
+        {selected && <span className="sr-only">Selected</span>}
+        {node.favorite && (
+          <Star className="absolute top-2 left-2 size-3.5 fill-gold text-gold" aria-hidden="true" />
+        )}
         {(selectMode || selected) && (
           <span
             className={cn(
@@ -392,8 +521,8 @@ function GridCard({
           </div>
           <button
             type="button"
-            aria-label="File actions"
-            className="flex size-8 shrink-0 items-center justify-center rounded-md text-subtle opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
+            aria-label={`Actions for ${node.name}`}
+            className="flex size-8 shrink-0 items-center justify-center rounded-md text-subtle opacity-100 focus-visible:opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -433,7 +562,10 @@ function ListRow({
       onClick={(e) => activate(node, selectMode, e)}
       onContextMenu={onMenu}
       onKeyDown={(e) => {
-        if (e.key === "Enter") activate(node, selectMode, e as unknown as MouseEvent);
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          activate(node, selectMode, e as unknown as MouseEvent);
+        }
       }}
       onDragStart={(e) => {
         const ids = useFiles.getState().selectedIds.includes(node.id)
@@ -477,12 +609,13 @@ function ListRow({
           <FileGlyph kind={kind} folder={node.kind === "folder"} />
         )}
         <span className="min-w-0 flex-1 truncate text-sm">{node.name}</span>
-        {node.favorite && <Star className="size-3 fill-gold text-gold" />}
+        {selected && <span className="sr-only">Selected</span>}
+        {node.favorite && <Star className="size-3 fill-gold text-gold" aria-hidden="true" />}
         {node.bookmark && <Bookmark className="size-3 text-gold" />}
         <button
           type="button"
-          aria-label="File actions"
-          className="flex size-8 shrink-0 items-center justify-center rounded-md text-subtle"
+          aria-label={`Actions for ${node.name}`}
+          className="flex size-8 shrink-0 items-center justify-center rounded-md text-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gold/50"
           onClick={(e) => {
             e.preventDefault();
             e.stopPropagation();
@@ -612,7 +745,17 @@ function RecentsRail() {
   );
 }
 
-function ContextMenu({ x, y, id, onClose }: { x: number; y: number; id: string; onClose: () => void }) {
+function ContextMenu({
+  x,
+  y,
+  id,
+  onClose,
+}: {
+  x: number;
+  y: number;
+  id: string;
+  onClose: () => void;
+}) {
   const node = useFiles((s) => s.nodes[id]);
   const place = useFiles((s) => s.currentPlace());
   const [rename, setRename] = useState(false);
@@ -659,7 +802,9 @@ function ContextMenu({ x, y, id, onClose }: { x: number; y: number; id: string; 
           {node.kind === "folder" && (
             <>
               <Item onClick={() => act(() => useFiles.getState().openFolder(id))}>Open</Item>
-              <Item onClick={() => act(() => useFiles.getState().addTab("internal", id))}>Open in new tab</Item>
+              <Item onClick={() => act(() => useFiles.getState().addTab("internal", id))}>
+                Open in new tab
+              </Item>
             </>
           )}
           <Item onClick={() => setRename(true)}>Rename</Item>
@@ -671,20 +816,34 @@ function ContextMenu({ x, y, id, onClose }: { x: number; y: number; id: string; 
               {node.bookmark ? "Remove bookmark" : "Bookmark"}
             </Item>
           )}
-          <Item onClick={() => act(() => useFiles.getState().copyToClipboard("copy", [id]))}>Copy</Item>
-          <Item onClick={() => act(() => useFiles.getState().copyToClipboard("cut", [id]))}>Cut</Item>
+          <Item onClick={() => act(() => useFiles.getState().copyToClipboard("copy", [id]))}>
+            Copy
+          </Item>
+          <Item onClick={() => act(() => useFiles.getState().copyToClipboard("cut", [id]))}>
+            Cut
+          </Item>
           <Item onClick={() => act(() => void useFiles.getState().duplicate(id))}>Duplicate</Item>
-          <Item onClick={() => act(() => void useFiles.getState().downloadNodes([id]))}>Download</Item>
+          <Item onClick={() => act(() => void useFiles.getState().downloadNodes([id]))}>
+            Download
+          </Item>
           <Item onClick={() => act(() => void useFiles.getState().shareNodes([id]))}>Share</Item>
-          <Item onClick={() => act(() => void useFiles.getState().exportToDevice([id]))}>Save to device</Item>
+          <Item onClick={() => act(() => void useFiles.getState().exportToDevice([id]))}>
+            Save to device
+          </Item>
           {node.kind === "file" && (
-            <Item onClick={() => act(() => useFiles.getState().openViewer(id, "hex"))}>Hex view</Item>
+            <Item onClick={() => act(() => useFiles.getState().openViewer(id, "hex"))}>
+              Hex view
+            </Item>
           )}
-          <Item onClick={() => act(() => useFiles.getState().openViewer(id, "info"))}>Properties</Item>
+          <Item onClick={() => act(() => useFiles.getState().openViewer(id, "info"))}>
+            Properties
+          </Item>
           {place === "trash" ? (
             <Item onClick={() => act(() => void useFiles.getState().restore([id]))}>Restore</Item>
           ) : (
-            <Item onClick={() => act(() => void useFiles.getState().remove([id]))}>Move to trash</Item>
+            <Item onClick={() => act(() => void useFiles.getState().remove([id]))}>
+              Move to trash
+            </Item>
           )}
         </>
       )}
@@ -713,7 +872,11 @@ export function ConfirmBar() {
     <div className="pointer-events-auto absolute inset-x-3 bottom-20 z-20 flex flex-wrap items-center justify-between gap-2 rounded-lg bg-card px-3 py-2 shadow-xl hairline sm:bottom-16">
       <span className="text-sm text-muted tabular-nums">{selected.length} selected</span>
       <div className="flex flex-wrap gap-2">
-        <Button size="sm" variant="secondary" onClick={() => useFiles.getState().copyToClipboard("copy")}>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => useFiles.getState().copyToClipboard("copy")}
+        >
           Copy
         </Button>
         <Button size="sm" variant="secondary" onClick={() => void useFiles.getState().shareNodes()}>
