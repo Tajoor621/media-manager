@@ -1,5 +1,10 @@
 name: Build native Android debug APK
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "android-native/**"
+      - ".github/workflows/android-native.yml"
   push:
     branches: [main]
     paths:

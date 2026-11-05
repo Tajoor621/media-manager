@@ -105,3 +105,7 @@ The PWA's local file manager can be functional without those capabilities. A nat
 7. **User experience:** the native alpha uses basic Android buttons and lists, not the desired polished X-plore-inspired black/gold dual-pane layout.
 
 **Status:** Feature work is ongoing. A successful CI compile verifies source buildability only; it does not establish that all X-plore features are cloned or that Android/iPhone restrictions have been removed.
+
+## Phase 0.6 — Native details dialog
+
+The native file-details dialog formats each field on a separate real newline. A unit test asserts that the rendered message contains no literal backslash-n sequence. This is covered by the Android unit-test workflow; no device-specific validation is required for the string formatter.

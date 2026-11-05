@@ -76,13 +76,29 @@ internal fun MainActivity.manageInternal(file: java.io.File, parent: java.io.Fil
     }
 
 
+internal fun nativeDetailsMessage(
+    kind: String,
+    path: String,
+    size: String,
+    modified: String,
+    readable: Boolean,
+    writable: Boolean,
+): String = listOf(
+    "Type: $kind",
+    "Path: $path",
+    "Size: $size",
+    "Last modified: $modified",
+    "Readable: $readable",
+    "Writable: $writable",
+).joinToString("\n")
+
 internal fun MainActivity.showNativeDetails(file: java.io.File) {
         val kind = if (file.isDirectory) "Directory" else "File"
         val readable = file.canRead()
         val writable = file.canWrite()
         val modified = java.text.DateFormat.getDateTimeInstance().format(java.util.Date(file.lastModified()))
         AlertDialog.Builder(this).setTitle(file.name)
-            .setMessage("Type: $kind\\nPath: ${file.absolutePath}\\nSize: ${formatSize(file.length())}\\nLast modified: $modified\\nReadable: $readable\\nWritable: $writable")
+            .setMessage(nativeDetailsMessage(kind, file.absolutePath, formatSize(file.length()), modified, readable, writable))
             .setPositiveButton("OK", null).show()
     }
 
