@@ -35,8 +35,9 @@ internal fun MainActivity.hasAllFilesAccess(): Boolean =
 internal fun MainActivity.render() {
         if (!unlocked) { unlock(); return }
         layout("Media Manager 621 • File Explorer")
+        button("← Media library") { showMediaHome() }
         if (!hasAllFilesAccess()) {
-            note("Storage setup • Android has not granted broad access to shared internal storage. Your files are not missing. Approve access in Android Settings to open the internal storage explorer automatically.")
+            note("File explorer setup • The media library is the default home. Use the SAF picker to select a folder, or optionally enable All files access. Automatic internal explorer launch is available in Security & app lock settings.")
             if (BuildConfig.ALLOW_ALL_FILES && Build.VERSION.SDK_INT >= 30) {
                 button("1. Enable internal storage access") { requestAllFilesAccess() }
                 note("In Android Settings, enable \"Allow access to manage all files\" for Media Manager 621, then return to the app. Android may use slightly different wording.")
