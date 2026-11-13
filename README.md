@@ -207,3 +207,7 @@ Media Manager operates within Android, iOS, and browser permission models. All f
 ## License
 
 Copyright © Media Manager 621 contributors. No open-source license is currently declared; use and redistribution rights are reserved unless a license is added.
+
+### Native Android media library (hardening branch)
+
+The native Android build includes a MediaStore Photos/Videos/Music browser, SAF file explorer, encrypted vault, and optional lock. Media permissions are requested when opening a media category; the internal explorer can be enabled as a startup preference. This work is under build and physical-device verification and is not yet a production release.
