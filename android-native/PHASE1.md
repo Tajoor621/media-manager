@@ -33,3 +33,19 @@ Use the artifact `media-manager-621-native-standard-debug-apk` and install the e
 ## Review gate
 
 Do not begin Phase 2 until the user reviews Phase 1 and the native install/launch/SAF smoke tests have been completed.
+
+## Media library hardening — manual acceptance matrix
+
+All cases are **not run** until tested on physical devices.
+
+| Android version | First launch/no permission | Full grant | Partial grant (14+) | Denied/permanent denied → Settings | Empty library | 5,000 files | Image/video/audio | Back position | Lock/unlock |
+|---|---|---|---|---|---|---|---|---|---|
+| 8 | Not run | Not run | N/A | Not run | Not run | Not run | Not run | Not run | Not run |
+| 10 | Not run | Not run | N/A | Not run | Not run | Not run | Not run | Not run | Not run |
+| 11 | Not run | Not run | N/A | Not run | Not run | Not run | Not run | Not run | Not run |
+| 13 | Not run | Not run | N/A | Not run | Not run | Not run | Not run | Not run | Not run |
+| 14 | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
+| 15 | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
+| 16 | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run | Not run |
+
+Implementation is under review; **Phase 1 review gate remains open**. Media listing uses paged **Load 300 more** instead of RecyclerView to avoid a disruptive legacy-View rewrite. App explorer-on-launch preference defaults **off**.
