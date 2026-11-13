@@ -33,6 +33,20 @@ jobs:
       - name: Compile native Android debug APK
         working-directory: android-native
         run: gradle :core:files:testDebugUnitTest :app:testStandardDebugUnitTest :app:assembleStandardDebug :app:assembleFossDebug :app:assemblePlayDebug :app:assembleSystemDebug --stacktrace
+      - name: Android lint (standard distribution)
+        working-directory: android-native
+        run: gradle :app:lintStandardDebug --stacktrace
+      - name: Verify Play variant excludes All files access
+        working-directory: android-native
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="app/build/outputs/apk/play/debug/app-play-debug.apk"
+          test -s "$APK"
+          if "$ANDROID_HOME/build-tools/35.0.0/aapt" dump permissions "$APK" | grep -q "android.permission.MANAGE_EXTERNAL_STORAGE"; then
+            echo "Play APK must not request All files access" >&2
+            exit 1
+          fi
       - name: Verify APK signature and install compatibility metadata
         working-directory: android-native
         shell: bash
