@@ -123,7 +123,7 @@ internal fun MainActivity.showMediaFolders(kind: MediaKind) {
         val grouped = items.groupBy { it.folderKey }.toSortedMap(String.CASE_INSENSITIVE_ORDER)
         runOnUiThread {
             if (generation != listingGeneration || isFinishing || isDestroyed) return@runOnUiThread
-            content.removeViewAt(content.childCount - 1)
+            if (content.childCount > 0) content.removeViewAt(content.childCount - 1)
             if (grouped.isEmpty()) note("No media folders found in the currently granted library.")
             grouped.forEach { (key, rows) ->
                 button("${MediaGrouping.folderLabel(key)} (${rows.size})") { showMediaFolder(kind, key, rows) }
@@ -148,8 +148,8 @@ internal fun MainActivity.queryMedia(kind: MediaKind): List<LibraryItem> {
         val nameIdx = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DISPLAY_NAME)
         val mimeIdx = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.MIME_TYPE)
         val dateIdx = cursor.getColumnIndexOrThrow(MediaStore.MediaColumns.DATE_ADDED)
-        val pathIdx = 4
-        val volumeIdx = 5
+        val pathIdx = cursor.getColumnIndexOrThrow(columns[4])
+        val volumeIdx = cursor.getColumnIndexOrThrow(columns[5])
         while(cursor.moveToNext()) {
             if (cursor.isNull(pathIdx)) continue
             val path = cursor.getString(pathIdx)
@@ -192,13 +192,18 @@ internal fun MainActivity.showMediaFolder(kind: MediaKind, folder: String, rows:
         }
         line.addView(open, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(line)
-        // Only decode thumbnails when rows become visible; the LruCache avoids repeated reads.
+        // Decode only when a row enters the viewport; attaching alone is insufficient\n        // because ScrollView attaches even off-screen children.
         if (kind != MediaKind.MUSIC) {
             val observer = object : android.view.View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: android.view.View) {
-                    listingExecutor.execute {
-                        val bmp = thumbnails.get(item, kind)
-                        runOnUiThread { if (v.isAttachedToWindow && bmp != null) thumbnail.setImageBitmap(bmp) }
+                    v.post {
+                        val visible = android.graphics.Rect()
+                        if (v.getGlobalVisibleRect(visible) && visible.height() > 0) {
+                            listingExecutor.execute {
+                                val bmp = thumbnails.get(item, kind)
+                                runOnUiThread { if (v.isAttachedToWindow && bmp != null) thumbnail.setImageBitmap(bmp) }
+                            }
+                        }
                     }
                 }
                 override fun onViewDetachedFromWindow(v: android.view.View) = Unit
