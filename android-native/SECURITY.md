@@ -30,3 +30,12 @@ Do not post passwords, encryption keys, private paths, or personal files in publ
 ## Limitations
 
 Phase 1 does not yet implement transfer foreground services, trash, network sharing, comprehensive external viewers, backups, sync, or privileged shell execution. Archive operations and some legacy file actions still need further reliability and lifecycle testing. Do not treat the alpha vault as your only backup.
+
+## Media library permissions (hardening branch)
+
+- `READ_EXTERNAL_STORAGE` (up to Android 12L): read indexed photos, videos and audio.
+- `READ_MEDIA_IMAGES` and `READ_MEDIA_VIDEO` (Android 13+): display Photos and Videos tabs.
+- `READ_MEDIA_AUDIO` (Android 13+): display Music tab.
+- `READ_MEDIA_VISUAL_USER_SELECTED` (Android 14+): support selected-photo/video access without requiring the whole library.
+- These permissions are requested on demand; SAF remains available without them. Google Play distribution may require a permissions declaration and policy review for photo/video access.
+- Media previews decode from granted URIs in process and do not write decrypted/copy files to shared storage. The existing FLAG_SECURE window setting is retained.

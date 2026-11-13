@@ -67,6 +67,13 @@ internal fun MainActivity.showSecuritySettings() {
         if (!unlocked) { unlock(); return }
         layout("Security & app lock")
         note(if (pin.lockEnabled) "App lock: enabled" else "App lock: off (default)")
+        val preferences = getSharedPreferences("mm621-settings", android.content.Context.MODE_PRIVATE)
+        val openExplorer = android.widget.CheckBox(this).apply {
+            text = "Open file explorer on launch"
+            isChecked = preferences.getBoolean("open-explorer-on-launch", false)
+            setOnCheckedChangeListener { _, enabled -> preferences.edit().putBoolean("open-explorer-on-launch", enabled).apply() }
+        }
+        content.addView(openExplorer)
         note("App lock is optional. You can use one character or a longer password. Short passwords offer very little protection. Private Vault encryption remains separate from the app lock.")
         button(if (pin.configured) "Change app password" else "Enable password lock") {
             val first = passwordInput()
