@@ -48,6 +48,49 @@ internal fun MainActivity.mediaPermissionGranted(kind: MediaKind): Boolean {
             ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED)
 }
 
+
+internal fun MainActivity.requestMediaAccess(kind: MediaKind) {
+    if (!unlocked) { unlock(); return }
+    requestedMediaKind = kind
+    val permission = if (Build.VERSION.SDK_INT >= 33) when (kind) {
+        MediaKind.PHOTOS -> Manifest.permission.READ_MEDIA_IMAGES
+        MediaKind.VIDEOS -> Manifest.permission.READ_MEDIA_VIDEO
+        MediaKind.MUSIC -> Manifest.permission.READ_MEDIA_AUDIO
+    } else Manifest.permission.READ_EXTERNAL_STORAGE
+    val permissions = if (Build.VERSION.SDK_INT >= 34 && kind != MediaKind.MUSIC)
+        arrayOf(permission, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
+    else arrayOf(permission)
+    val prefs = getSharedPreferences("mm621-settings", android.content.Context.MODE_PRIVATE)
+    val asked = prefs.getBoolean("media-requested-${kind.name}", false)
+    if (asked && !shouldShowRequestPermissionRationale(permission)) {
+        showMediaPermissionDialog(kind, true)
+    } else {
+        prefs.edit().putBoolean("media-requested-${kind.name}", true).apply()
+        mediaPermissionRequest.launch(permissions)
+    }
+}
+
+internal fun MainActivity.showMediaPermissionDialog(kind: MediaKind, permanent: Boolean = false) {
+    if (!unlocked) { unlock(); return }
+    val partial = Build.VERSION.SDK_INT >= 34 && kind != MediaKind.MUSIC &&
+        ContextCompat.checkSelfPermission(this, Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED) == PackageManager.PERMISSION_GRANTED
+    val message = when {
+        partial -> "Only selected photos or videos are accessible. You can change your selection in Android Settings."
+        permanent -> "Media access is disabled. Open app permissions in Android Settings to grant access."
+        else -> "Media access was not granted. You can continue using the SAF file picker instead."
+    }
+    AlertDialog.Builder(this).setTitle("Media library access").setMessage(message)
+        .setPositiveButton(if (permanent) "Open app permissions" else "Try again") { _, _ ->
+            if (permanent) {
+                val i = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:$packageName"))
+                startActivity(i)
+            } else requestMediaAccess(kind)
+        }
+        .setNegativeButton("Use folder picker") { _, _ -> folderPicker.launch(null) }
+        .show()
+}
+
 internal fun MainActivity.showMediaHome() {
     if (!unlocked) { unlock(); return }
     layout("Media library")
