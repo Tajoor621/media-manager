@@ -192,18 +192,13 @@ internal fun MainActivity.showMediaFolder(kind: MediaKind, folder: String, rows:
         }
         line.addView(open, LinearLayout.LayoutParams(0, -2, 1f))
         content.addView(line)
-        // Decode only when a row enters the viewport; attaching alone is insufficient\n        // because ScrollView attaches even off-screen children.
+        // Cache thumbnails; paging limits the number of views in this legacy ScrollView.
         if (kind != MediaKind.MUSIC) {
             val observer = object : android.view.View.OnAttachStateChangeListener {
                 override fun onViewAttachedToWindow(v: android.view.View) {
-                    v.post {
-                        val visible = android.graphics.Rect()
-                        if (v.getGlobalVisibleRect(visible) && visible.height() > 0) {
-                            listingExecutor.execute {
-                                val bmp = thumbnails.get(item, kind)
-                                runOnUiThread { if (v.isAttachedToWindow && bmp != null) thumbnail.setImageBitmap(bmp) }
-                            }
-                        }
+                    listingExecutor.execute {
+                        val bmp = thumbnails.get(item, kind)
+                        runOnUiThread { if (v.isAttachedToWindow && bmp != null) thumbnail.setImageBitmap(bmp) }
                     }
                 }
                 override fun onViewDetachedFromWindow(v: android.view.View) = Unit
