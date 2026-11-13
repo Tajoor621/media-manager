@@ -348,7 +348,14 @@ internal fun MainActivity.openFile(uri: Uri, name: String, mime: String, length:
             mime.startsWith("image/") -> {
                 try {
                     contentResolver.openInputStream(uri).use { stream ->
-                        val bitmap = BitmapFactory.decodeStream(stream)
+                        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                        BitmapFactory.decodeStream(stream, null, bounds)
+                        val longest = maxOf(bounds.outWidth, bounds.outHeight)
+                        var sample = 1
+                        while (longest / sample > 2048) sample *= 2
+                        val bitmap = contentResolver.openInputStream(uri)?.use { source ->
+                            BitmapFactory.decodeStream(source, null, BitmapFactory.Options().apply { inSampleSize = sample })
+                        }
                         requireNotNull(bitmap) { "Unsupported image format" }
                         val image = ImageView(this).apply {
                             setImageBitmap(bitmap)
