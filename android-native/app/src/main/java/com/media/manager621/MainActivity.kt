@@ -48,6 +48,14 @@ class MainActivity : FragmentActivity() {
     private var pendingExternalView = true
     internal val listingExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
     internal var listingGeneration = 0
+    internal val mediaThumbs by lazy { MediaThumbs(this) }
+    internal var mediaRequestedBefore = false
+    internal var requestedMediaKind = MediaKind.PHOTOS
+    internal val mediaPermissionRequest = registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
+        if (!unlocked) { unlock(); return@registerForActivityResult }
+        if (mediaPermissionGranted(requestedMediaKind)) showMediaFolders(requestedMediaKind)
+        else showMediaPermissionDialog(requestedMediaKind)
+    }
 
     internal val folderPicker = registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
         if (uri != null) {
@@ -219,7 +227,8 @@ class MainActivity : FragmentActivity() {
             }
             error("This link cannot be opened. Select a document from a trusted provider.")
         }
-        if (hasAllFilesAccess()) browseInternal(Environment.getExternalStorageDirectory()) else render()
+        val launchExplorer = getSharedPreferences("mm621-settings", MODE_PRIVATE).getBoolean("open-explorer-on-launch", false)
+        if (launchExplorer && hasAllFilesAccess()) browseInternal(Environment.getExternalStorageDirectory()) else showMediaHome()
     }
 
 
